@@ -538,6 +538,196 @@ class TestPrettyCut:
         assert result.index.equals(x.index)
         assert result.index.name == "test_index"
 
+    def test_timedelta_cut_basic(self):
+        """Test basic timedelta cutting with timedelta bins."""
+        x = pd.to_timedelta([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], unit="D")
+        bins = pd.to_timedelta([3, 6, 9], unit="D")
+        result = pretty_cut(x, bins)
+
+        # Should have 4 categories (<=3, 3-6, 6-9, >9)
+        assert len(result.categories) == 4
+
+        # Check that categorization is correct
+        assert result[0] == result.categories[0]  # 1 day -> first category
+        assert result[3] == result.categories[1]  # 4 days -> second category
+        assert result[6] == result.categories[2]  # 7 days -> third category
+        assert result[9] == result.categories[3]  # 10 days -> fourth category
+
+    def test_timedelta_cut_with_hours(self):
+        """Test timedelta cutting with hour-based bins."""
+        x = pd.to_timedelta([1, 6, 12, 18, 24, 30], unit="h")
+        bins = pd.to_timedelta([6, 12, 24], unit="h")
+        result = pretty_cut(x, bins)
+
+        # Should have 4 categories
+        assert len(result.categories) == 4
+
+        # Check that categorization is correct
+        assert result[0] == result.categories[0]  # 1 hour -> first category (<=6h)
+        assert result[2] == result.categories[1]  # 12 hours -> second category (6-12h)
+        assert result[4] == result.categories[2]  # 24 hours -> third category (12-24h)
+        assert result[5] == result.categories[3]  # 30 hours -> fourth category (>24h)
+
+    def test_timedelta_cut_pandas_series(self):
+        """Test timedelta cutting with pandas Series input."""
+        x = pd.Series(
+            pd.to_timedelta([1, 2, 3, 4, 5, 6, 7, 8], unit="D"), name="time_series"
+        )
+        bins = pd.to_timedelta([3, 6], unit="D")
+        result = pretty_cut(x, bins)
+
+        # Should return a pandas Series
+        assert isinstance(result, pd.Series)
+        assert result.name == "time_series"
+        assert result.index.equals(x.index)
+
+        # Should have 3 categories (<=3, 3-6, >6)
+        assert len(result.cat.categories) == 3
+
+    def test_timedelta_cut_numpy_array(self):
+        """Test timedelta cutting with numpy timedelta64 array."""
+        x = np.array([1, 2, 3, 4, 5, 6, 7], dtype="timedelta64[D]")
+        bins = np.array([3, 5], dtype="timedelta64[D]")
+        result = pretty_cut(x, bins)
+
+        # Should return a Categorical
+        assert isinstance(result, pd.Categorical)
+        # Should have 3 categories (<=3, 3-5, >5)
+        assert len(result.categories) == 3
+
+        # Check boundary values - all should be in the correct category
+        assert result[0] == result.categories[0]  # 1 day -> first category
+        assert (
+            result[2] == result.categories[0]
+        )  # 3 days (at boundary) -> first category
+        assert result[3] == result.categories[1]  # 4 days -> second category
+        assert (
+            result[4] == result.categories[1]
+        )  # 5 days (at boundary) -> second category
+        assert result[6] == result.categories[2]  # 7 days -> third category
+
+    def test_timedelta_cut_with_nat(self):
+        """Test timedelta array with NaT (Not a Time) values."""
+        x = pd.to_timedelta([1, np.nan, 3, 4, np.nan, 6], unit="D")
+        bins = pd.to_timedelta([2, 5], unit="D")
+        result = pretty_cut(x, bins)
+
+        # Should have 3 categories
+        assert len(result.categories) == 3
+
+        # NaT values should result in NaN categories
+        assert pd.isna(result[1])
+        assert pd.isna(result[4])
+
+        # Non-NaT values should be categorized correctly
+        assert result[0] == result.categories[0]  # 1 day -> first category
+        assert result[2] == result.categories[1]  # 3 days -> second category
+        assert result[5] == result.categories[2]  # 6 days -> third category
+
+    def test_timedelta_cut_unsorted_bins(self):
+        """Test timedelta cutting with unsorted bins."""
+        x = pd.to_timedelta([1, 2, 3, 4, 5, 6, 7], unit="D")
+        bins = pd.to_timedelta([5, 2, 6], unit="D")  # Unsorted
+        result = pretty_cut(x, bins)
+
+        # The function should sort bins automatically and have 4 categories
+        assert len(result.categories) == 4
+
+        # Check that categorization works correctly
+        assert result[0] == result.categories[0]  # 1 day -> first category (<=2)
+        assert result[2] == result.categories[1]  # 3 days -> second category (2-5)
+        assert result[4] == result.categories[1]  # 5 days -> second category (2-5)
+        assert result[6] == result.categories[3]  # 7 days -> fourth category (>6)
+
+    def test_timedelta_cut_mixed_units(self):
+        """Test timedelta cutting with mixed time units."""
+        # Data in days
+        x = pd.to_timedelta([1, 2, 3, 4, 5, 6, 7, 8], unit="D")
+        # Bins in hours (will be converted to same timedelta representation)
+        bins = pd.to_timedelta([48, 120], unit="h")  # 2 days, 5 days
+        result = pretty_cut(x, bins)
+
+        # Should have 3 categories
+        assert len(result.categories) == 3
+
+        # Check values
+        assert result[0] == result.categories[0]  # 1 day -> first category
+        assert result[2] == result.categories[1]  # 3 days -> second category
+        assert result[7] == result.categories[2]  # 8 days -> third category
+
+    def test_timedelta_cut_single_bin(self):
+        """Test timedelta cutting with a single bin value."""
+        x = pd.to_timedelta([1, 2, 3, 4, 5], unit="D")
+        bins = pd.to_timedelta([3], unit="D")
+        result = pretty_cut(x, bins)
+
+        # Should have 2 categories
+        assert len(result.categories) == 2
+
+        # Check values
+        assert result[0] == result.categories[0]  # 1 day -> first category
+        assert result[4] == result.categories[1]  # 5 days -> second category
+
+    def test_timedelta_cut_all_values_below_first_bin(self):
+        """Test timedelta when all values are below the first bin."""
+        x = pd.to_timedelta([1, 2], unit="D")
+        bins = pd.to_timedelta([5, 10], unit="D")
+        result = pretty_cut(x, bins)
+
+        # Should have 3 categories
+        assert len(result.categories) == 3
+        # All values should be in the first category
+        assert all(result == result.categories[0])
+
+    def test_timedelta_cut_all_values_above_last_bin(self):
+        """Test timedelta when all values are above the last bin."""
+        x = pd.to_timedelta([15, 20], unit="D")
+        bins = pd.to_timedelta([5, 10], unit="D")
+        result = pretty_cut(x, bins)
+
+        # Should have 3 categories
+        assert len(result.categories) == 3
+        # All values should be in the last category
+        assert all(result == result.categories[2])
+
+    def test_timedelta_cut_microseconds(self):
+        """Test timedelta cutting with microsecond precision."""
+        x = pd.to_timedelta([100, 500, 1000, 2000, 5000], unit="us")
+        bins = pd.to_timedelta([500, 2000], unit="us")
+        result = pretty_cut(x, bins)
+
+        # Should have 3 categories
+        assert len(result.categories) == 3
+
+        # Check that categorization works
+        assert result[0] == result.categories[0]  # 100us -> first category
+        assert result[2] == result.categories[1]  # 1000us -> second category
+        assert result[4] == result.categories[2]  # 5000us -> third category
+
+    def test_timedelta_cut_empty_array(self):
+        """Test timedelta cutting with empty input array."""
+        x = pd.to_timedelta([], unit="D")
+        bins = pd.to_timedelta([3, 6, 9], unit="D")
+        result = pretty_cut(x, bins)
+
+        assert len(result) == 0
+        # Should still have 4 categories
+        assert len(result.categories) == 4
+
+    def test_timedelta_cut_preserve_series_attributes(self):
+        """Test that pandas Series attributes are preserved with timedelta."""
+        index = pd.Index(["a", "b", "c", "d", "e"], name="test_index")
+        x = pd.Series(
+            pd.to_timedelta([1, 2, 3, 4, 5], unit="D"), index=index, name="td_series"
+        )
+        bins = pd.to_timedelta([2, 4], unit="D")
+        result = pretty_cut(x, bins)
+
+        assert isinstance(result, pd.Series)
+        assert result.name == "td_series"
+        assert result.index.equals(x.index)
+        assert result.index.name == "test_index"
+
 
 class TestBoolsToCategorical:
     """Test cases for the bools_to_categorical function."""

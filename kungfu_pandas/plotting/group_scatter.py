@@ -44,12 +44,14 @@ class GroupScatter:
     x: ArrayType1D
     y: ArrayType1D
     n_groups: int = 25
-    filter: ArrayType1D = slice(None)
+    filter: ArrayType1D = None
     sample_weight: ArrayType1D = None
     deg: int = 1
     fit_intercept: bool = True
 
     def __post_init__(self):
+        if self.filter is None:
+            self.filter = slice(None)
         self._x = np.asarray(self.x[self.filter])
         self._y = np.asarray(self.y[self.filter])
         null_filter = np.isnan(self._x) | np.isnan(self._y)

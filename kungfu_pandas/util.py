@@ -12,7 +12,6 @@ import polars as pl
 import pyarrow as pa
 from numba.core.extending import overload
 from numba.typed import List as NumbaList
-from pandas.core.sorting import get_group_index
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -734,9 +733,20 @@ def pretty_cut(x: ArrayType1D, bins: ArrayType1D | List, precision: int = None):
     >>> result.categories
     Index([' <= 5', '6 - 10', '11 - 15', ' > 15'], dtype='object')
     """
-    bins = np.sort(bins)
+    bins = np.array(bins)
     np_type = np.asarray(x).dtype
     is_integer = np_type.kind in "ui" and bins.dtype.kind in "ui"
+    is_float = np_type.kind == "f"
+    is_timedelta = np_type.kind == "m"
+
+    if is_timedelta:
+        numeric_bins = pd.to_timedelta(bins)
+    else:
+        numeric_bins = bins
+
+    sort_key = np.argsort(numeric_bins)
+    bins = bins[sort_key]
+    numeric_bins = numeric_bins[sort_key]
 
     if precision is None and not is_integer:
 
@@ -752,17 +762,19 @@ def pretty_cut(x: ArrayType1D, bins: ArrayType1D | List, precision: int = None):
         if is_integer:
             left = str(left + is_integer)
             right = str(right)
-        else:
+        elif is_float:
             left, right = (f"{x:.{precision}f}" for x in [left, right])
         if left == right:
             labels.append(str(left))
         else:
             labels.append(f"{left} - {right}")
+
     labels.append(f" > {bins[-1]}")
-    codes = bins.searchsorted(x)
-    if np_type.kind == "f":
-        codes[np.isnan(x)] = -1
-    out = pd.Categorical.from_codes(codes, labels)
+
+    codes = numeric_bins.searchsorted(x)
+    if not is_integer:
+        codes[pd.Series(x).isnull()] = -1
+    out = pd.Categorical.from_codes(codes, pd.Index(labels))
     if isinstance(x, pd.Series):
         out = pd.Series(out, index=x.index, name=x.name)
 
