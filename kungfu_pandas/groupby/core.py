@@ -1532,6 +1532,37 @@ class GroupBy:
         )
         return self._get_row_selection(values, ilocs, keep_input_index, n=n)
 
+    @cached_property
+    def _group_first_sort_key(self):
+
+        return np.concatenate(list(self.groups.values()))
+
+    def _sort_rolling_calculation_group_keys_first(self, result):
+        sorted_keys = pd.Index(self.groups.keys()).sort_values()
+        sorted_arrays = [self.groups[k] for k in sorted_keys]
+        _group_first_sort_key = np.concatenate(sorted_arrays)
+        result = result.iloc[_group_first_sort_key]
+        inner_index = self._key_index
+        if self._key_index is None:
+            inner_index = pd.RangeIndex(len(self._group_ikey))
+        inner_index = inner_index[_group_first_sort_key]
+
+        # build a multiindex with outer level as group keys and inner level as original index
+        levels = [sorted_keys]
+        codes = [np.repeat(sorted_keys, [len(arr) for arr in sorted_arrays])]
+        if inner_index.nlevels == 1:
+            inner_codes, inner_level = factorize_1d(inner_index)
+            codes.append(inner_codes),
+            levels.append(inner_level)
+        else:
+            codes.extend(inner_index.codes)
+            levels.extend(inner_index.levels)
+
+        index = pd.MultiIndex(codes=codes, levels=levels, verify_integrity=False)
+        result.index = index
+
+        return result
+
     def _apply_rolling_or_cumulative_func(
         self,
         func_name: str,
