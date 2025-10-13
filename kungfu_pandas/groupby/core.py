@@ -183,6 +183,7 @@ class GroupBy:
         group_key_list, group_key_names = convert_data_to_arr_list_and_keys(group_keys)
         self._key_index: pd.Index = _validate_input_lengths_and_indexes(group_key_list)
         self._index_is_sorted = False
+        self._group_key_pointers: List[np.ndarray] = None
 
         if len(group_key_list) == 1:
             group_key = group_key_list[0]
@@ -193,13 +194,12 @@ class GroupBy:
                 factorize_in_chunks = False
             else:
                 try:
-                    to_arrow(group_key)
                     chunked = isinstance(to_arrow(group_key), pa.ChunkedArray)
                 except TypeError:
                     chunked = False
 
                 # TODO: estimate number of uniques based on initial slice of array
-                # and do not factorize in chunk when number of uniques is estimated to be large
+                # and do not factorize in chunks when number of uniques is estimated to be large
                 factorize_in_chunks = (
                     factorize_large_inputs_in_chunks and len(group_key) >= 1_000_000
                 ) or chunked
@@ -337,6 +337,7 @@ class GroupBy:
             Dictionary with group names as keys and arrays of row indices as
             values
         """
+        self._unify_group_key_chunks(keep_chunked=True)
         return numba_funcs.build_groups_dict_optimized(
             self.group_ikey, self.result_index, self.ngroups
         )
@@ -351,6 +352,7 @@ class GroupBy:
                 self._group_ikey = pa.chunked_array(chunks)
             else:
                 self._group_ikey = np.concatenate(chunks)
+            self._group_key_pointers = None
 
     @property
     def group_ikey(self):
@@ -563,7 +565,7 @@ class GroupBy:
             for i, group_key in enumerate(group_keys):
                 pointer = (
                     self._group_key_pointers[first_chunk_in + i]
-                    if self.key_is_chunked
+                    if self._group_key_pointers is not None
                     else self.result_index
                 )
                 bound_args = signature(func).bind(
@@ -585,7 +587,7 @@ class GroupBy:
 
         if not self.key_is_chunked:
             # single group key chunk, so we can return the results directly
-            return list(zip(list(results), counts))
+            return list(zip(results, counts))
 
         # Now combine the results for each value in value_list to get one result per value
         individual_results = []
@@ -610,7 +612,10 @@ class GroupBy:
 
             for j, result in enumerate(results_one_value):
                 result = result[:-1]  # ignore null group
-                pointer = self._group_key_pointers[first_chunk_in + j]
+                if self._group_key_pointers is None:
+                    pointer = slice(None)
+                else:
+                    pointer = self._group_key_pointers[first_chunk_in + j]
                 combined[pointer] = numba_funcs.reduce_array_pair(
                     combined[pointer], result, reducer=reducer, counts=count[pointer]
                 )
