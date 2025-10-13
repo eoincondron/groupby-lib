@@ -6,7 +6,7 @@ import polars as pl
 import pyarrow as pa
 import pytest
 
-from kungfu_pandas.groupby.core import GroupBy, add_row_margin, crosstab
+from groupby_lib.groupby.core import GroupBy, add_row_margin, crosstab
 
 from .conftest import assert_pd_equal
 

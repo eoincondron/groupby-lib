@@ -1,10 +1,10 @@
-# kungfu-pandas
+# groupby-lib
 
 A high-performance extension package for pandas that provides fast groupby operations using NumPy and Numba acceleration intended for large data sets. Performance improvements increase as data is scaled up (see benchmarking below). It also provides a more flexible API and convenience methods in the group-by space like adding margins and calculating ratios. 
 
 ## Overview
 
-`kungfu-pandas` enhances Pandas groupby functionality with optimized implementations that leverage NumPy arrays and Numba's just-in-time compilation for significant performance improvements. The package is designed to work seamlessly with pandas DataFrames and Series while providing additional flexibility for various array types.
+`groupby-lib` enhances Pandas groupby functionality with optimized implementations that leverage NumPy arrays and Numba's just-in-time compilation for significant performance improvements. The package is designed to work seamlessly with pandas DataFrames and Series while providing additional flexibility for various array types.
 
 
 ## Faster GroupBy Operations
@@ -22,7 +22,7 @@ Optimized group-by operations, particularly with categorical data (uses the exis
 
 
 ```python
-from kungfu_pandas.groupby import GroupBy
+from groupby_lib.groupby import GroupBy
 
 arr = np.random.randint(0, 10, 10000)
 keys = arr % 3 + 2
@@ -61,12 +61,12 @@ GroupBy(key_list).size()
 
 ```bash
 # Install dependencies
-conda install kungfu-pandas
+conda install groupby-lib
 ```
 
 ## The GroupBy Class
 
-The core of kungfu-pandas is the `GroupBy` class located in `kungfu_pandas.groupby.core`. This class provides efficient groupby operations with a pandas-like API.
+The core of groupby-lib is the `GroupBy` class located in `groupby_lib.groupby.core`. This class provides efficient groupby operations with a pandas-like API.
 
 ### Basic Usage
 
@@ -234,7 +234,7 @@ print(first_two)
 Create pivot tables using the crosstab function:
 
 ```python
-from kungfu_pandas.groupby import crosstab
+from groupby_lib.groupby import crosstab
 
 # Sample data
 index_keys = ['Jan', 'Feb', 'Jan', 'Feb']
@@ -256,7 +256,7 @@ print(result)
 
 ## Performance Benefits
 
-kungfu-pandas provides significant performance improvements for large datasets:
+groupby-lib provides significant performance improvements for large datasets:
 
 - **Numba Acceleration**: JIT compilation for fast numerical operations
 - **Multi-threading**: Automatic parallelization for datasets > 1M rows

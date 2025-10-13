@@ -6,7 +6,7 @@ import pandas as pd
 import polars as pl
 import pyarrow as pa
 
-from kungfu_pandas.util import (
+from groupby_lib.util import (
     ArrayType1D,
     _maybe_cast_timestamp_arr,
     _val_to_numpy,
@@ -160,7 +160,7 @@ def factorize_1d(
 
     This method is useful for obtaining a numeric representation of an
     array when all that matters is identifying distinct values. factorize_1d
-    is available as both a top-level function :func:`~kungfu_pandas.util.factorize_1d`,
+    is available as both a top-level function :func:`~groupby_lib.util.factorize_1d`,
     and as a method.
 
     Parameters
@@ -204,7 +204,7 @@ def factorize_1d(
     --------
     >>> import numpy as np
     >>> import pandas as pd
-    >>> from kungfu_pandas.util import factorize_1d
+    >>> from groupby_lib.util import factorize_1d
 
     Basic usage with a list:
 
@@ -403,7 +403,7 @@ def factorize_2d(
     --------
     >>> import numpy as np
     >>> import pandas as pd
-    >>> from kungfu_pandas.util import factorize_2d
+    >>> from groupby_lib.util import factorize_2d
 
     Basic usage with two arrays:
 

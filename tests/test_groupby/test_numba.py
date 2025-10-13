@@ -6,8 +6,8 @@ import pandas as pd
 import pytest
 from numba.typed import List as NumbaList
 
-from kungfu_pandas.groupby import numba
-from kungfu_pandas.groupby.numba import (
+from groupby_lib.groupby import numba
+from groupby_lib.groupby.numba import (
     ScalarFuncs,
     _apply_cumulative,
     _apply_group_method_single_chunk,
@@ -29,8 +29,8 @@ from kungfu_pandas.groupby.numba import (
     rolling_min,
     rolling_sum,
 )
-from kungfu_pandas.util import MIN_INT
-from kungfu_pandas.util import is_null as py_isnull
+from groupby_lib.util import MIN_INT
+from groupby_lib.util import is_null as py_isnull
 
 
 @nb.njit

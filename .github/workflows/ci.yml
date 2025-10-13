@@ -9,7 +9,7 @@ on:
     types: [published]
 
 env:
-  PACKAGE_NAME: kungfu-pandas
+  PACKAGE_NAME: groupby-lib
 
 jobs:
   test:
@@ -53,7 +53,7 @@ jobs:
 
     - name: Test with pytest
       run: |
-        python -m pytest tests/ -v --cov=kungfu_pandas --cov-report=xml --cov-report=term
+        python -m pytest tests/ -v --cov=groupby_lib --cov-report=xml --cov-report=term
 
     - name: Upload to Codecov
       uses: codecov/codecov-action@v4
@@ -108,7 +108,7 @@ jobs:
     if: github.event_name == 'release' && github.event.action == 'published'
     environment:
       name: pypi
-      url: https://pypi.org/p/kungfu-pandas
+      url: https://pypi.org/p/groupby-lib
 
     steps:
     - name: Download distribution artifacts
@@ -133,5 +133,5 @@ jobs:
     - name: Trigger conda-forge bot
       run: |
         echo "PyPI release published. conda-forge bot should automatically detect and create PR."
-        echo "Monitor: https://github.com/conda-forge/kungfu-pandas-feedstock"
+        echo "Monitor: https://github.com/conda-forge/groupby-lib-feedstock"
         echo "If no automatic PR appears within 24h, create manual PR to feedstock."

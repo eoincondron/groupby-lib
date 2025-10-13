@@ -1,7 +1,7 @@
-kungfu-pandas Documentation
+groupby-lib Documentation
 ============================
 
-**kungfu-pandas** is a high-performance extension package for pandas that provides optimized groupby operations using NumPy arrays and Numba's just-in-time compilation.
+**groupby-lib** is a high-performance extension package for pandas that provides optimized groupby operations using NumPy arrays and Numba's just-in-time compilation.
 
 The package is designed to work seamlessly with pandas DataFrames and Series while providing significant performance improvements for various array types.
 
@@ -28,15 +28,15 @@ Quick Start
 
 Install from PyPI::
 
-    pip install kungfu-pandas
+    pip install groupby-lib
 
 Or from conda-forge::
 
-    conda install -c conda-forge kungfu-pandas
+    conda install -c conda-forge groupby-lib
 
 Basic usage::
 
-    from kungfu_pandas.groupby import GroupBy
+    from groupby_lib.groupby import GroupBy
     import pandas as pd
     import numpy as np
     

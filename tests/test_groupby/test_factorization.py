@@ -6,7 +6,7 @@ import polars as pl
 import pyarrow as pa
 import pytest
 
-from kungfu_pandas.groupby.factorization import (
+from groupby_lib.groupby.factorization import (
     factorize_1d,
     factorize_2d,
     monotonic_factorization,

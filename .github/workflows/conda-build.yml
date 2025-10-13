@@ -51,7 +51,7 @@ jobs:
       shell: bash -l {0}
       run: |
         # Find the built package file
-        PACKAGE_FILE=$(find dist/conda -name "kungfu-pandas-*.conda" -o -name "kungfu-pandas-*.tar.bz2" | head -1)
+        PACKAGE_FILE=$(find dist/conda -name "groupby-lib-*.conda" -o -name "groupby-lib-*.tar.bz2" | head -1)
         echo "Found package: $PACKAGE_FILE"
 
         # Create test environment from environment.yml
@@ -63,7 +63,7 @@ jobs:
 
         # Run basic import test
         python -c "
-        from kungfu_pandas.groupby import GroupBy
+        from groupby_lib.groupby import GroupBy
         import pandas as pd
         import numpy as np
         

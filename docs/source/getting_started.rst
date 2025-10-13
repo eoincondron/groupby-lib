@@ -9,22 +9,22 @@ From PyPI
 
 Install the latest stable version from PyPI::
 
-    pip install kungfu-pandas
+    pip install groupby-lib
 
 From conda-forge
 ~~~~~~~~~~~~~~~~~
 
 Install from conda-forge::
 
-    conda install -c conda-forge kungfu-pandas
+    conda install -c conda-forge groupby-lib
 
 From Source
 ~~~~~~~~~~~
 
 To install the development version from source::
 
-    git clone https://github.com/eoincondron/kungfu-pandas.git
-    cd kungfu-pandas
+    git clone https://github.com/eoincondron/groupby-lib.git
+    cd groupby-lib
     pip install -e .[dev]
 
 Basic Usage
@@ -32,7 +32,7 @@ Basic Usage
 
 Import the main classes::
 
-    from kungfu_pandas.groupby import GroupBy
+    from groupby_lib.groupby import GroupBy
     import pandas as pd
     import numpy as np
 
@@ -59,7 +59,7 @@ Basic GroupBy operations::
 Performance Benefits
 --------------------
 
-kungfu-pandas provides significant performance improvements over standard pandas groupby operations, especially for:
+groupby-lib provides significant performance improvements over standard pandas groupby operations, especially for:
 
 - Large datasets (>100K rows)
 - Numeric operations (sum, mean, std, etc.)
@@ -69,7 +69,7 @@ Example performance comparison::
 
     import time
     import pandas as pd
-    from kungfu_pandas.groupby import GroupBy
+    from groupby_lib.groupby import GroupBy
     
     # Large dataset
     n = 1_000_000
@@ -81,14 +81,14 @@ Example performance comparison::
     pandas_result = values.groupby(keys).sum()
     pandas_time = time.time() - start
     
-    # kungfu-pandas groupby
+    # groupby-lib groupby
     start = time.time()
     gb = GroupBy(keys)
     kungfu_result = gb.sum(values)
     kungfu_time = time.time() - start
     
     print(f"Pandas: {pandas_time:.3f}s")
-    print(f"kungfu-pandas: {kungfu_time:.3f}s")
+    print(f"groupby-lib: {kungfu_time:.3f}s")
     print(f"Speedup: {pandas_time/kungfu_time:.1f}x")
 
 Requirements

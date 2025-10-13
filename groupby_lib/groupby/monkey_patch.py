@@ -16,15 +16,15 @@ def groupby_fast_series(
     self: pd.Series, by=None, level=None, **kwargs
 ) -> SeriesGroupBy:
     """
-    Group Series using optimized kungfu-pandas GroupBy implementation.
+    Group Series using optimized groupby-lib GroupBy implementation.
 
     This method provides the same interface as pandas Series.groupby() but uses
-    the kungfu-pandas optimized GroupBy engine for better performance.
+    the groupby-lib optimized GroupBy engine for better performance.
 
     Parameters
     ----------
     by : array-like, optional
-        Grouping key(s). Can be any type acceptable to kungfu-pandas GroupBy constructor.
+        Grouping key(s). Can be any type acceptable to groupby-lib GroupBy constructor.
         If None, must specify level.
     level : int, str, or sequence, optional
         If the Series has a MultiIndex, group by specific level(s) of the index.
@@ -35,12 +35,12 @@ def groupby_fast_series(
     Returns
     -------
     SeriesGroupBy
-        kungfu-pandas SeriesGroupBy object with optimized performance
+        groupby-lib SeriesGroupBy object with optimized performance
 
     Examples
     --------
     >>> import pandas as pd
-    >>> from kungfu_pandas.groupby import install_groupby_fast
+    >>> from groupby_lib.groupby import install_groupby_fast
     >>> install_groupby_fast()  # Add groupby_fast methods
     >>>
     >>> s = pd.Series([1, 2, 3, 4, 5, 6])
@@ -58,15 +58,15 @@ def groupby_fast_dataframe(
     self: pd.DataFrame, by=None, level=None, **kwargs
 ) -> DataFrameGroupBy:
     """
-    Group DataFrame using optimized kungfu-pandas GroupBy implementation.
+    Group DataFrame using optimized groupby-lib GroupBy implementation.
 
     This method provides the same interface as pandas DataFrame.groupby() but uses
-    the kungfu-pandas optimized GroupBy engine for better performance.
+    the groupby-lib optimized GroupBy engine for better performance.
 
     Parameters
     ----------
     by : array-like, optional
-        Grouping key(s). Can be any type acceptable to kungfu-pandas GroupBy constructor.
+        Grouping key(s). Can be any type acceptable to groupby-lib GroupBy constructor.
         If None, must specify level.
     level : int, str, or sequence, optional
         If the DataFrame has a MultiIndex, group by specific level(s) of the index.
@@ -77,12 +77,12 @@ def groupby_fast_dataframe(
     Returns
     -------
     DataFrameGroupBy
-        kungfu-pandas DataFrameGroupBy object with optimized performance
+        groupby-lib DataFrameGroupBy object with optimized performance
 
     Examples
     --------
     >>> import pandas as pd
-    >>> from kungfu_pandas.groupby import install_groupby_fast
+    >>> from groupby_lib.groupby import install_groupby_fast
     >>> install_groupby_fast()  # Add groupby_fast methods
     >>>
     >>> df = pd.DataFrame({'A': [1, 2, 3, 4], 'B': [10, 20, 30, 40]})
@@ -101,27 +101,27 @@ def install_groupby_fast():
     Install groupby_fast methods on pandas Series and DataFrame classes.
 
     This function monkey-patches pandas to add optimized groupby_fast methods
-    that use the kungfu-pandas GroupBy implementation. After calling this function,
+    that use the groupby-lib GroupBy implementation. After calling this function,
     all Series and DataFrame objects will have a .groupby_fast() method available.
 
     Examples
     --------
     >>> import pandas as pd
-    >>> from kungfu_pandas.groupby import install_groupby_fast
+    >>> from groupby_lib.groupby import install_groupby_fast
     >>>
     >>> # Install the fast groupby methods
     >>> install_groupby_fast()
     >>>
     >>> # Now all pandas objects have groupby_fast
     >>> df = pd.DataFrame({'A': [1, 2, 3], 'B': [4, 5, 6]})
-    >>> gb = df.groupby_fast(['X', 'Y', 'X'])  # Uses kungfu-pandas implementation
+    >>> gb = df.groupby_fast(['X', 'Y', 'X'])  # Uses groupby-lib implementation
     >>> result = gb.sum()
     """
     # Add methods to the classes
     pd.Series.groupby_fast = groupby_fast_series
     pd.DataFrame.groupby_fast = groupby_fast_dataframe
 
-    print("✅ kungfu-pandas groupby_fast methods installed!")
+    print("✅ groupby-lib groupby_fast methods installed!")
     print(
         "   Use df.groupby_fast() and series.groupby_fast() for optimized performance"
     )
@@ -139,7 +139,7 @@ def uninstall_groupby_fast():
     if hasattr(pd.DataFrame, "groupby_fast"):
         delattr(pd.DataFrame, "groupby_fast")
 
-    print("✅ kungfu-pandas groupby_fast methods removed")
+    print("✅ groupby-lib groupby_fast methods removed")
 
 
 def is_groupby_fast_installed() -> bool:

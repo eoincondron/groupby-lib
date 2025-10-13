@@ -41,8 +41,8 @@ jobs:
     
     - name: Run bandit security linter
       run: |
-        bandit -r kungfu_pandas/ -f json -o bandit-report.json || true
-        bandit -r kungfu_pandas/ -ll
+        bandit -r groupby_lib/ -f json -o bandit-report.json || true
+        bandit -r groupby_lib/ -ll
     
     - name: Upload security reports
       if: always()
@@ -74,19 +74,19 @@ jobs:
     
     - name: Check code formatting with black
       run: |
-        black --check --diff kungfu_pandas/ tests/
+        black --check --diff groupby_lib/ tests/
     
     - name: Check import sorting with isort
       run: |
-        isort --check-only --diff kungfu_pandas/ tests/
+        isort --check-only --diff groupby_lib/ tests/
     
     - name: Run flake8 linting
       run: |
-        flake8 kungfu_pandas/ tests/ --statistics
+        flake8 groupby_lib/ tests/ --statistics
     
     - name: Run pylint
       run: |
-        pylint kungfu_pandas/ --rcfile=.pylintrc || true
+        pylint groupby_lib/ --rcfile=.pylintrc || true
 
   dependency-update:
     name: Check for Dependency Updates
@@ -192,7 +192,7 @@ jobs:
         print(f'PyArrow: {pa.__version__}')
         
         # Test basic functionality
-        from kungfu_pandas.groupby import GroupBy
+        from groupby_lib.groupby import GroupBy
         gb = GroupBy(pd.Series([0,0,1,1]))
         result = gb.sum(pd.Series([1,2,3,4]))
         assert len(result) == 2

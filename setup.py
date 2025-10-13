@@ -9,18 +9,18 @@ with open(os.path.join(this_directory, "README.md"), encoding="utf-8") as f:
 
 # Read version from __init__.py
 version = {}
-with open(os.path.join(this_directory, "kungfu_pandas", "__init__.py")) as f:
+with open(os.path.join(this_directory, "groupby_lib", "__init__.py")) as f:
     exec(f.read(), version)
 
 setup(
-    name="kungfu-pandas",
+    name="groupby-lib",
     version="0.1.0",
     author="Eoin Condron",
     author_email="econdr@gmail.com",
     description="High-performance extension package for pandas with fast groupby operations",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/eoincondron/kungfu-pandas",
+    url="https://github.com/eoincondron/groupby-lib",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 3 - Alpha",
@@ -70,14 +70,14 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "kungfu-pandas=kungfu_pandas.__main__:main",
+            "groupby-lib=groupby_lib.__main__:main",
         ],
     },
     keywords="pandas groupby performance numba numpy data-analysis",
     project_urls={
-        "Bug Reports": "https://github.com/eoincondron/kungfu-pandas/issues",
-        "Source": "https://github.com/eoincondron/kungfu-pandas",
-        "Documentation": "https://github.com/eoincondron/kungfu-pandas/blob/main/README.md",
+        "Bug Reports": "https://github.com/eoincondron/groupby-lib/issues",
+        "Source": "https://github.com/eoincondron/groupby-lib",
+        "Documentation": "https://github.com/eoincondron/groupby-lib/blob/main/README.md",
     },
     include_package_data=True,
     zip_safe=False,

@@ -1,4 +1,4 @@
-name: kungfu-pandas-env
+name: groupby-lib-env
 channels:
   - conda-forge
   - defaults

@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from kungfu_pandas.ema import _ema_adjusted, _ema_time_weighted, _ema_unadjusted, ema
+from groupby_lib.ema import _ema_adjusted, _ema_unadjusted, _ema_time_weighted, ema
 
 parametrize = pytest.mark.parametrize
 

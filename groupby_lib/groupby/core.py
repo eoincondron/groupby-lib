@@ -1864,7 +1864,7 @@ class GroupBy:
         Examples
         --------
         >>> import pandas as pd
-        >>> from kungfu_pandas.groupby import GroupBy
+        >>> from groupby_lib.groupby import GroupBy
         >>> data = pd.DataFrame({
         ...     'group': ['A', 'A', 'B', 'B'],
         ...     'values': [1, 2, 3, 4]
@@ -1915,7 +1915,7 @@ class GroupBy:
         Examples
         --------
         >>> import pandas as pd
-        >>> from kungfu_pandas.groupby import GroupBy
+        >>> from groupby_lib.groupby import GroupBy
         >>> data = pd.DataFrame({
         ...     'group': ['A', 'A', 'B', 'B'],
         ...     'values': [1, 3, 2, 6]

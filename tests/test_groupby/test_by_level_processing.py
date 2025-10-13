@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from kungfu_pandas.groupby.api import DataFrameGroupBy, SeriesGroupBy
+from groupby_lib.groupby.api import DataFrameGroupBy, SeriesGroupBy
 
 from .conftest import assert_pd_equal
 
@@ -80,8 +80,8 @@ class TestDataFrameByLevelProcessing:
         result = gb.sum()
         expected = pandas_gb.sum()
 
-        # Both should have same numeric columns (kungfu-pandas filters to
-        # numeric only) pandas excludes the grouping column, kungfu-pandas
+        # Both should have same numeric columns (groupby-lib filters to
+        # numeric only) pandas excludes the grouping column, groupby-lib
         # includes it since it's numeric
         expected_cols = [col for col in expected.columns if col in result.columns]
         pd.testing.assert_frame_equal(result[expected_cols], expected[expected_cols])
@@ -97,7 +97,7 @@ class TestDataFrameByLevelProcessing:
         result = gb.sum()
         expected = pandas_gb.sum()
 
-        # Find common columns (pandas excludes grouping col, kungfu-pandas may include it)
+        # Find common columns (pandas excludes grouping col, groupby-lib may include it)
         common_cols = [col for col in expected.columns if col in result.columns]
         if common_cols:
             pd.testing.assert_frame_equal(result[common_cols], expected[common_cols])

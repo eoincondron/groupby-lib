@@ -452,7 +452,7 @@ def to_arrow(a: ArrayType1D, zero_copy_only: bool = True) -> pa.Array | pa.Chunk
     >>> import numpy as np
     >>> import pandas as pd
     >>> import pyarrow as pa
-    >>> from kungfu_pandas.util import to_arrow
+    >>> from groupby_lib.util import to_arrow
 
     NumPy array conversion:
     >>> arr = np.array([1, 2, 3, 4, 5])
@@ -735,6 +735,7 @@ def pretty_cut(x: ArrayType1D, bins: ArrayType1D | List, precision: int = None):
     """
     bins = np.array(bins)
     np_type = np.asarray(x).dtype
+    bins = np.array(bins)
     is_integer = np_type.kind in "ui" and bins.dtype.kind in "ui"
     is_float = np_type.kind == "f"
     is_timedelta = np_type.kind == "m"
