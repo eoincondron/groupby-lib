@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from kungfu_pandas.ema import ema, _ema_adjusted, _ema_unadjusted, _ema_time_weighted
+from kungfu_pandas.ema import _ema_adjusted, _ema_time_weighted, _ema_unadjusted, ema
 
 parametrize = pytest.mark.parametrize
 
@@ -295,8 +295,9 @@ class TestEmaPublicApi:
 
     def test_with_times(self, simple_array):
         """Test time-weighted EMA through public API."""
-        times = pd.to_datetime(['2020-01-01', '2020-01-02', '2020-01-03',
-                                '2020-01-04', '2020-01-05'])
+        times = pd.to_datetime(
+            ["2020-01-01", "2020-01-02", "2020-01-03", "2020-01-04", "2020-01-05"]
+        )
         halflife = "1d"
         result = ema(simple_array, halflife=halflife, times=times)
 
@@ -305,8 +306,9 @@ class TestEmaPublicApi:
 
     def test_series_with_times(self, simple_series):
         """Test time-weighted EMA with Series input."""
-        times = pd.to_datetime(['2020-01-01', '2020-01-02', '2020-01-03',
-                                '2020-01-04', '2020-01-05'])
+        times = pd.to_datetime(
+            ["2020-01-01", "2020-01-02", "2020-01-03", "2020-01-04", "2020-01-05"]
+        )
         halflife = "1d"
         result = ema(simple_series, halflife=halflife, times=times)
 
@@ -316,12 +318,16 @@ class TestEmaPublicApi:
 
     def test_error_no_alpha_or_halflife(self, simple_array):
         """Test that error is raised when neither alpha nor halflife provided."""
-        with pytest.raises(ValueError, match="One of alpha or halflife must be provided"):
+        with pytest.raises(
+            ValueError, match="One of alpha or halflife must be provided"
+        ):
             ema(simple_array)
 
     def test_error_both_alpha_and_halflife(self, simple_array):
         """Test that error is raised when both alpha and halflife provided."""
-        with pytest.raises(ValueError, match="Only one of alpha or halflife should be provided"):
+        with pytest.raises(
+            ValueError, match="Only one of alpha or halflife should be provided"
+        ):
             ema(simple_array, alpha=0.5, halflife=2.0)
 
     def test_error_invalid_alpha_low(self, simple_array):
@@ -342,7 +348,9 @@ class TestEmaPublicApi:
     def test_error_times_without_halflife(self, simple_array):
         """Test that error is raised when times provided without halflife."""
         times = np.arange(len(simple_array))
-        with pytest.raises(ValueError, match="Halflife must be provided when times are given"):
+        with pytest.raises(
+            ValueError, match="Halflife must be provided when times are given"
+        ):
             ema(simple_array, alpha=0.5, times=times)
 
     def test_error_multidimensional_array(self):

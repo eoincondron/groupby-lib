@@ -1,7 +1,6 @@
-import numpy as np
 import numba as nb
+import numpy as np
 import pandas as pd
-
 
 _EMA_SIGNATURES = [
     nb.types.float64[:](arr_type, nb.types.float64)

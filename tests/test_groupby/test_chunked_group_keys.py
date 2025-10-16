@@ -596,7 +596,7 @@ class TestChunkedGroupKeys:
         assert set(gb._group_key_pointers[0]) != set(gb._group_key_pointers[1])
 
         values = np.random.rand(200)
-        values[values < .2] = np.nan
+        values[values < 0.2] = np.nan
 
         expected = gb.agg(values, ["min", "mean", "var"])
 

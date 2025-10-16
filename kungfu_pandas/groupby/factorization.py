@@ -253,7 +253,7 @@ def factorize_1d(
     """
     if isinstance(values, pd.RangeIndex):
         return factorize_range_index(values)
-    
+
     if isinstance(values, (pl.Series, pa.Array, pa.ChunkedArray)) or (
         hasattr(values, "dtype") and isinstance(values.dtype, pd.ArrowDtype)
     ):
