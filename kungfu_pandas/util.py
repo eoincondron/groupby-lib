@@ -806,8 +806,11 @@ def nb_dot(a: Union[np.ndarray, pd.DataFrame, pl.DataFrame], b: ArrayType1D):
         out = np.zeros(0, dtype=return_type)
     else:
         out = _nb_dot(arr_list, np.asarray(b), out=np.zeros(len(a), dtype=return_type))
+        
     if isinstance(a, pd.DataFrame):
         out = pd.Series(out, a.index)
+    elif isinstance(a, pl.DataFrame):
+        out = pl.Series(out)
     return out
 
 

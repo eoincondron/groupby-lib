@@ -992,7 +992,7 @@ class TestNbDot:
 
         expected = np.array([9, 12, 15])  # [1*1 + 4*2, 2*1 + 5*2, 3*1 + 6*2]
         np.testing.assert_array_equal(result, expected)
-        assert isinstance(result, np.ndarray)
+        assert isinstance(result, pl.Series)
 
     def test_single_column(self):
         """Test nb_dot with single column input."""
@@ -1102,9 +1102,7 @@ class TestNbDot:
     @pytest.mark.parametrize("array_type", [np.array, pd.DataFrame, pl.DataFrame])
     def test_different_input_types(self, array_type):
         """Test nb_dot with different input array types."""
-        if array_type == pd.DataFrame:
-            a = array_type({"col1": [1, 2], "col2": [3, 4]})
-        elif array_type == pl.DataFrame:
+        if array_type in (pl.DataFrame, pd.DataFrame):
             a = array_type({"col1": [1, 2], "col2": [3, 4]})
         else:  # numpy
             a = array_type([[1, 3], [2, 4]])
@@ -1112,14 +1110,13 @@ class TestNbDot:
         b = np.array([2, 1])
         result = nb_dot(a, b)
 
-        expected_values = np.dot(a, b)  # [1*2 + 3*1, 2*2 + 4*1]
+        expected_values = np.array([5, 8])  # [1*2 + 3*1, 2*2 + 4*1]
+        np.testing.assert_array_equal(np.asarray(result), expected_values)
 
         if isinstance(a, pd.DataFrame):
-            assert isinstance(result, pd.Series)
-            np.testing.assert_array_equal(result.values, expected_values)
-        else:
-            assert isinstance(result, np.ndarray)
-            np.testing.assert_array_equal(result, expected_values)
+            pd.testing.assert_series_equal(result, pd.Series(expected_values, index=a.index))
+        elif isinstance(a, pl.DataFrame):
+            assert isinstance(result, pl.Series)
 
     @pytest.mark.parametrize("length", [10**3, 10**6, 10**7])
     def test_consistency_with_numpy_dot(self, length):
