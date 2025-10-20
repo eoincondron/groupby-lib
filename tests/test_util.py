@@ -1114,7 +1114,9 @@ class TestNbDot:
         np.testing.assert_array_equal(np.asarray(result), expected_values)
 
         if isinstance(a, pd.DataFrame):
-            pd.testing.assert_series_equal(result, pd.Series(expected_values, index=a.index))
+            pd.testing.assert_series_equal(
+                result, pd.Series(expected_values, index=a.index)
+            )
         elif isinstance(a, pl.DataFrame):
             assert isinstance(result, pl.Series)
 

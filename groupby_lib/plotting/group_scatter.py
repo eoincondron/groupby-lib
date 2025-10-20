@@ -7,9 +7,7 @@ import pandas as pd
 try:
     from sklearn import linear_model as lm
 except ModuleNotFoundError:
-    print(
-        "scikit-learn is an optional dependency of groupby-lib need for GroupScatter"
-    )
+    print("scikit-learn is an optional dependency of groupby-lib need for GroupScatter")
     raise
 
 from groupby_lib.util import ArrayType1D
