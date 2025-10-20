@@ -1962,7 +1962,7 @@ def cummax(
 
 
 @nb.njit(nogil=True, fastmath=False)
-def _build_groups_mapping(group_ikey: np.ndarray, ngroups: int):
+def _build_groups_mapping(group_key_list: NumbaList[np.ndarray], ngroups: int):
     """
     Build groups mapping efficiently in a single pass.
 
@@ -1972,8 +1972,8 @@ def _build_groups_mapping(group_ikey: np.ndarray, ngroups: int):
 
     Parameters
     ----------
-    group_ikey : np.ndarray
-        Integer array where each element indicates group index for that row
+    group_key_list : np.ndarray
+        List of integer arrays where each element indicates group index for that row
     ngroups : int
         Number of unique groups
 
@@ -1984,10 +1984,11 @@ def _build_groups_mapping(group_ikey: np.ndarray, ngroups: int):
         - indices: Flattened array of all row indices sorted by group
     """
     # Count how many items are in each group
-    group_counts = np.zeros(ngroups, dtype=np.int64)
-    for i in range(len(group_ikey)):
-        if group_ikey[i] >= 0:  # Skip null groups (negative indices)
-            group_counts[group_ikey[i]] += 1
+    group_counts = np.zeros(ngroups + 1, dtype=np.int64)  # +1 for null group
+
+    for arr in group_key_list:
+        for k in arr:
+            group_counts[k] += 1
 
     # Calculate starting positions for each group in the output array
     group_starts = np.zeros(ngroups + 1, dtype=np.int64)
@@ -2002,12 +2003,14 @@ def _build_groups_mapping(group_ikey: np.ndarray, ngroups: int):
     current_pos = group_starts[:-1].copy()
 
     # Fill the indices array
-    for row_idx in range(len(group_ikey)):
-        group_idx = group_ikey[row_idx]
-        if group_idx >= 0:  # Skip null groups
-            pos = current_pos[group_idx]
-            indices[pos] = row_idx
-            current_pos[group_idx] += 1
+    i = 0
+    for arr in group_key_list:
+        for k in arr:
+            if k >= 0:  # Skip null groups
+                pos = current_pos[k]
+                indices[pos] = i
+                current_pos[k] += 1
+            i += 1
 
     return group_starts, indices
 
@@ -2036,6 +2039,7 @@ def build_groups_dict_optimized(group_ikey: np.ndarray, result_index, ngroups: i
         as values
     """
     # Use numba-optimized function to get the mapping
+    group_ikey = _val_to_numpy(group_ikey, as_list=True)
     group_starts, indices = _build_groups_mapping(group_ikey, ngroups)
     group_indices = np.array_split(indices, group_starts[1:-1])
 

@@ -587,3 +587,22 @@ class TestChunkedGroupKeys:
                 assert_pd_equal(result_chunked, result_regular, check_dtype=False)
             except AssertionError as e:
                 raise AssertionError(f"Method {method} produced different results: {e}")
+
+    def test_chunked_group_keys_after_unification(self):
+        """Test that group keys are correctly unified after operations."""
+        group_key = pa.chunked_array([np.arange(100), np.arange(50, 150)])
+        gb = GroupBy(group_key)
+        assert gb.key_is_chunked
+        assert set(gb._group_key_pointers[0]) != set(gb._group_key_pointers[1])
+
+        values = np.random.rand(200)
+        values[values < 0.2] = np.nan
+
+        expected = gb.agg(values, ["min", "mean", "var"])
+
+        gb._unify_group_key_chunks(keep_chunked=True)
+        assert gb._group_key_pointers is None
+
+        result = gb.agg(values, ["min", "mean", "var"])
+
+        pd.testing.assert_frame_equal(expected, result)

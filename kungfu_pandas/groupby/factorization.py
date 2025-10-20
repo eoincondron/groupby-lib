@@ -142,6 +142,14 @@ def monotonic_factorization(arr: ArrayType1D) -> Tuple[int, np.ndarray, np.ndarr
     return cutoff, codes, labels
 
 
+def factorize_range_index(index: pd.RangeIndex) -> tuple[np.ndarray, pd.Index]:
+    codes, labels = index.values - index.start, index
+    if index.step != 1:
+        codes = codes // index.step
+
+    return codes, labels
+
+
 def factorize_1d(
     values,
     sort: "bool" = False,
@@ -243,6 +251,9 @@ def factorize_1d(
     >>> uniques
     Index(['a', 'b', 'c'], dtype='object')
     """
+    if isinstance(values, pd.RangeIndex):
+        return factorize_range_index(values)
+
     if isinstance(values, (pl.Series, pa.Array, pa.ChunkedArray)) or (
         hasattr(values, "dtype") and isinstance(values.dtype, pd.ArrowDtype)
     ):
