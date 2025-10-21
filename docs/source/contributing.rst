@@ -1,7 +1,7 @@
 Contributing
 ============
 
-We welcome contributions to kungfu-pandas! This guide will help you get started.
+We welcome contributions to groupby-lib! This guide will help you get started.
 
 Development Setup
 -----------------
@@ -9,13 +9,13 @@ Development Setup
 1. Fork the repository on GitHub
 2. Clone your fork locally::
 
-    git clone https://github.com/YOUR_USERNAME/kungfu-pandas.git
-    cd kungfu-pandas
+    git clone https://github.com/YOUR_USERNAME/groupby-lib.git
+    cd groupby-lib
 
 3. Create a development environment::
 
     conda env create -f environment.yml
-    conda activate kungfu-pandas-env
+    conda activate groupby-lib-env
 
 4. Install the package in development mode::
 
@@ -30,7 +30,7 @@ Run the full test suite::
 
 Run tests with coverage::
 
-    python -m pytest tests/ --cov=kungfu_pandas --cov-report=term-missing
+    python -m pytest tests/ --cov=groupby_lib --cov-report=term-missing
 
 Run specific tests::
 
@@ -48,10 +48,10 @@ We use several tools to maintain code quality:
 
 Run all style checks::
 
-    black kungfu_pandas tests
-    isort kungfu_pandas tests
-    flake8 kungfu_pandas tests
-    mypy kungfu_pandas
+    black groupby_lib tests
+    isort groupby_lib tests
+    flake8 groupby_lib tests
+    mypy groupby_lib
 
 Guidelines
 ----------

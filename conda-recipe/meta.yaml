@@ -1,4 +1,4 @@
-{% set name = "kungfu-pandas" %}
+{% set name = "groupby-lib" %}
 {% set version = "0.1.0" %}
 
 package:
@@ -13,7 +13,7 @@ build:
   number: 0
   script: python -m pip install . -vv
   entry_points:
-    - kungfu-pandas = kungfu_pandas:__main__
+    - groupby-lib = groupby_lib:__main__
 
 requirements:
   host:
@@ -31,15 +31,15 @@ requirements:
 
 test:
   imports:
-    - kungfu_pandas
-    - kungfu_pandas.groupby
-    - kungfu_pandas.groupby.core
-    - kungfu_pandas.groupby.numba
-    - kungfu_pandas.plotting
-    - kungfu_pandas.nanops
-    - kungfu_pandas.util
+    - groupby_lib
+    - groupby_lib.groupby
+    - groupby_lib.groupby.core
+    - groupby_lib.groupby.numba
+    - groupby_lib.plotting
+    - groupby_lib.nanops
+    - groupby_lib.util
   commands:
-    - python -c "import kungfu_pandas; print('kungfu-pandas imported successfully')"
+    - python -c "import groupby_lib; print('groupby-lib imported successfully')"
   requires:
     - pytest >=6.0
     - pytest-xdist
@@ -49,17 +49,17 @@ test:
     - python -m pytest tests/ -v --tb=short
 
 about:
-  home: https://github.com/eoincondron/kungfu-pandas
+  home: https://github.com/eoincondron/groupby-lib
   license: MIT
   license_family: MIT
   summary: High-performance extension package for pandas with fast groupby operations
   description: |
-    kungfu-pandas enhances pandas' groupby functionality with optimized implementations 
+    groupby-lib enhances pandas' groupby functionality with optimized implementations 
     that leverage NumPy arrays and Numba's just-in-time compilation for significant 
     performance improvements. The package is designed to work seamlessly with pandas 
     DataFrames and Series while providing additional flexibility for various array types.
-  doc_url: https://github.com/eoincondron/kungfu-pandas
-  dev_url: https://github.com/eoincondron/kungfu-pandas
+  doc_url: https://github.com/eoincondron/groupby-lib
+  dev_url: https://github.com/eoincondron/groupby-lib
 
 extra:
   recipe-maintainers:

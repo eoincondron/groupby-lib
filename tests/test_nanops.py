@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from kungfu_pandas import nanops
+from groupby_lib import nanops
 
 parametrize = pytest.mark.parametrize
 

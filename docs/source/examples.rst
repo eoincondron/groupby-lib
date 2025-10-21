@@ -1,14 +1,14 @@
 Examples
 ========
 
-This section provides practical examples of using kungfu-pandas for various data analysis tasks.
+This section provides practical examples of using groupby-lib for various data analysis tasks.
 
 Basic Aggregations
 ------------------
 
 Sum, Mean, and Count::
 
-    from kungfu_pandas.groupby import GroupBy
+    from groupby_lib.groupby import GroupBy
     import pandas as pd
     import numpy as np
     
@@ -91,7 +91,7 @@ Working with Large Datasets::
         'value': values
     })
     
-    # kungfu-pandas (optimized)
+    # groupby-lib (optimized)
     gb = GroupBy(pd.Series(groups))
     fast_result = gb.sum(pd.Series(values))
     
@@ -102,7 +102,7 @@ Custom Aggregations
 
 Using Multiple Operations::
 
-    from kungfu_pandas.groupby import GroupBy
+    from groupby_lib.groupby import GroupBy
     
     # Sample data
     sales_data = pd.DataFrame({
@@ -136,7 +136,7 @@ Memory Efficient Operations
 For very large datasets, consider chunked processing::
 
     def process_large_file(filename, chunk_size=100_000):
-        """Process large CSV in chunks with kungfu-pandas"""
+        """Process large CSV in chunks with groupby-lib"""
         results = []
         
         for chunk in pd.read_csv(filename, chunksize=chunk_size):
@@ -153,7 +153,7 @@ Integration with Plotting
 Visualizing GroupBy Results::
 
     import matplotlib.pyplot as plt
-    from kungfu_pandas.plotting import group_scatter
+    from groupby_lib.plotting import group_scatter
     
     # Group and plot results
     gb = GroupBy(df['category'])

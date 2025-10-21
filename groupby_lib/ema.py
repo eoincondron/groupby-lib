@@ -113,7 +113,7 @@ def ema(
     Examples
     --------
     >>> import numpy as np
-    >>> from kungfu_pandas.ema import ema
+    >>> from groupby_lib.ema import ema
     >>> data = np.array([1, 2, 3, 4, 5], dtype=float)
     >>> ema(data, alpha=0.5)
     array([1.        , 1.66666667, 2.42857143, 3.26666667, 4.16129032])

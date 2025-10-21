@@ -4,8 +4,8 @@ stages:
   - deploy
 
 variables:
-  CONDA_ENV: "kungfu-pandas-env"
-  PACKAGE_NAME: "kungfu-pandas"
+  CONDA_ENV: "groupby-lib-env"
+  PACKAGE_NAME: "groupby-lib"
 
 # Base template for conda setup
 .conda_setup: &conda_setup
@@ -96,7 +96,7 @@ test:conda-package:
   script:
     - source activate $CONDA_ENV
     - conda install -c ./conda-packages $PACKAGE_NAME
-    - python -c "import kungfu_pandas; print('Package installed successfully')"
+    - python -c "import groupby_lib; print('Package installed successfully')"
     - python -m pytest tests/ -v --tb=short
   only:
     - tags
@@ -155,10 +155,10 @@ lint:
   before_script:
     - pip install black flake8 isort mypy
   script:
-    - black --check --diff kungfu_pandas/
-    - flake8 kungfu_pandas/
-    - isort --check-only --diff kungfu_pandas/
-    - mypy kungfu_pandas/ --ignore-missing-imports
+    - black --check --diff groupby_lib/
+    - flake8 groupby_lib/
+    - isort --check-only --diff groupby_lib/
+    - mypy groupby_lib/ --ignore-missing-imports
   allow_failure: true
   only:
     - merge_requests
@@ -172,7 +172,7 @@ security:
   before_script:
     - pip install bandit safety
   script:
-    - bandit -r kungfu_pandas/
+    - bandit -r groupby_lib/
     - safety check --json
   allow_failure: true
   only:

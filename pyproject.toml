@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "wheel", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "kungfu-pandas"
+name = "groupby-lib"
 version = "0.1.0"
 description = "High-performance extension package for pandas with fast groupby operations"
 readme = "README.md"
@@ -55,20 +55,20 @@ test = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/eoincondron/kungfu-pandas"
-"Bug Reports" = "https://github.com/eoincondron/kungfu-pandas/issues"
-Source = "https://github.com/eoincondron/kungfu-pandas"
-Documentation = "https://github.com/eoincondron/kungfu-pandas/blob/main/README.md"
+Homepage = "https://github.com/eoincondron/groupby-lib"
+"Bug Reports" = "https://github.com/eoincondron/groupby-lib/issues"
+Source = "https://github.com/eoincondron/groupby-lib"
+Documentation = "https://github.com/eoincondron/groupby-lib/blob/main/README.md"
 
 [project.scripts]
-kungfu-pandas = "kungfu_pandas.__main__:main"
+groupby-lib = "groupby_lib.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["kungfu_pandas*"]
+include = ["groupby_lib*"]
 
 [tool.setuptools.package-data]
-"kungfu_pandas" = ["py.typed"]
+"groupby_lib" = ["py.typed"]
 
 [tool.black]
 line-length = 88
@@ -92,7 +92,7 @@ extend-exclude = '''
 profile = "black"
 multi_line_output = 3
 line_length = 88
-known_first_party = ["kungfu_pandas"]
+known_first_party = ["groupby_lib"]
 
 [tool.flake8]
 max-line-length = 88

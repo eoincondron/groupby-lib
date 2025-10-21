@@ -502,7 +502,7 @@ def _apply_group_method_single_chunk(
     Examples
     --------
     >>> import numpy as np
-    >>> from kungfu_pandas.groupby.numba import _apply_group_method_single_chunk
+    >>> from groupby_lib.groupby.numba import _apply_group_method_single_chunk
     >>>
     >>> group_key = np.array([0, 1, 0, 1, 2])
     >>> values = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
@@ -571,7 +571,7 @@ def reduce_array_pair(
     Examples
     --------
     >>> import numpy as np
-    >>> from kungfu_pandas.groupby.numba import reduce_array_pair, ScalarFuncs
+    >>> from groupby_lib.groupby.numba import reduce_array_pair, ScalarFuncs
     >>>
     >>> x = np.array([1.0, 3.0, 5.0])
     >>> y = np.array([2.0, 4.0, 6.0])
@@ -636,7 +636,7 @@ def combine_chunk_results_for_unfactorized_key(
     Examples
     --------
     >>> import numpy as np
-    >>> from kungfu_pandas.groupby.numba import combine_chunk_results_for_unfactorized_key, ScalarFuncs
+    >>> from groupby_lib.groupby.numba import combine_chunk_results_for_unfactorized_key, ScalarFuncs
     >>>
     >>> chunks = [np.array([10.0, 20.0]), np.array([30.0, 5.0])]
     >>> labels = [np.array(['A', 'B']), np.array(['A', 'C'])]
@@ -708,7 +708,7 @@ def combine_chunk_results_for_factorized_key(
     Examples
     --------
     >>> import numpy as np
-    >>> from kungfu_pandas.groupby.numba import combine_chunk_results_for_factorized_key, ScalarFuncs
+    >>> from groupby_lib.groupby.numba import combine_chunk_results_for_factorized_key, ScalarFuncs
     >>>
     >>> chunks = [np.array([10.0, 20.0, 30.0]), np.array([5.0, 15.0, 25.0])]
     >>> combined, combined_count = combine_chunk_results_for_factorized_key(
@@ -905,7 +905,7 @@ def group_count(
     Examples
     --------
     >>> import numpy as np
-    >>> from kungfu_pandas.groupby.numba import group_count
+    >>> from groupby_lib.groupby.numba import group_count
     >>> group_key = np.array([0, 1, 0, 1, 2, 2])
     >>> values = np.array([1, 2, np.nan, 3, 4, np.nan, 5])
     >>> ngroups = 3
@@ -1292,7 +1292,7 @@ def rolling_sum(
     Examples
     --------
     >>> import numpy as np
-    >>> from kungfu_pandas.groupby.numba import rolling_sum
+    >>> from groupby_lib.groupby.numba import rolling_sum
     >>>
     >>> # 1D example
     >>> group_key = np.array([0, 0, 0, 1, 1, 1])
@@ -1794,7 +1794,7 @@ def cumsum(
     Examples
     --------
     >>> import numpy as np
-    >>> from kungfu_pandas.groupby.numba import cumsum
+    >>> from groupby_lib.groupby.numba import cumsum
     >>>
     >>> # Basic usage
     >>> group_key = np.array([0, 0, 0, 1, 1, 1])
@@ -1842,7 +1842,7 @@ def cumcount(
     Examples
     --------
     >>> import numpy as np
-    >>> from kungfu_pandas.groupby.numba import cumcount
+    >>> from groupby_lib.groupby.numba import cumcount
     >>>
     >>> # Basic usage
     >>> group_key = np.array([0, 0, 0, 1, 1, 1])
@@ -1902,7 +1902,7 @@ def cummin(
     Examples
     --------
     >>> import numpy as np
-    >>> from kungfu_pandas.groupby.numba import cummin
+    >>> from groupby_lib.groupby.numba import cummin
     >>>
     >>> # Basic usage
     >>> group_key = np.array([0, 0, 0, 1, 1, 1])
@@ -1949,7 +1949,7 @@ def cummax(
     Examples
     --------
     >>> import numpy as np
-    >>> from kungfu_pandas.groupby.numba import cummax
+    >>> from groupby_lib.groupby.numba import cummax
     >>>
     >>> # Basic usage
     >>> group_key = np.array([0, 0, 0, 1, 1, 1])

@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [ main ]
     paths:
-      - 'kungfu_pandas/**'
+      - 'groupby_lib/**'
       - 'tests/**'
   schedule:
     # Run daily at 2 AM UTC for trend monitoring
@@ -40,7 +40,7 @@ jobs:
         import time
         import numpy as np
         import pandas as pd
-        from kungfu_pandas.groupby import GroupBy
+        from groupby_lib.groupby import GroupBy
         
         print('=== Performance Benchmark Results ===')
         

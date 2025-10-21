@@ -1,1 +1,1 @@
-# Test module for kungfu-pandas groupby functionality
+# Test module for groupby-lib groupby functionality

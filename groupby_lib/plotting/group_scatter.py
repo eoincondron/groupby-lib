@@ -7,12 +7,10 @@ import pandas as pd
 try:
     from sklearn import linear_model as lm
 except ModuleNotFoundError:
-    print(
-        "scikit-learn is an optional dependency of kungfu-pandas need for GroupScatter"
-    )
+    print("scikit-learn is an optional dependency of groupby-lib need for GroupScatter")
     raise
 
-from kungfu_pandas.util import ArrayType1D
+from groupby_lib.util import ArrayType1D
 
 
 @dataclass

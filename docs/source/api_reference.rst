@@ -1,12 +1,12 @@
 API Reference
 =============
 
-This section contains the complete API reference for kungfu-pandas.
+This section contains the complete API reference for groupby-lib.
 
 Core GroupBy Operations
 -----------------------
 
-.. currentmodule:: kungfu_pandas.groupby
+.. currentmodule:: groupby_lib.groupby
 
 .. autoclass:: GroupBy
    :members:
@@ -16,7 +16,7 @@ Core GroupBy Operations
 GroupBy Core Module
 -------------------
 
-.. automodule:: kungfu_pandas.groupby.core
+.. automodule:: groupby_lib.groupby.core
    :members:
    :undoc-members:
    :show-inheritance:
@@ -24,7 +24,7 @@ GroupBy Core Module
 Numba Implementations
 ---------------------
 
-.. automodule:: kungfu_pandas.groupby.numba
+.. automodule:: groupby_lib.groupby.numba
    :members:
    :undoc-members:
    :show-inheritance:
@@ -32,7 +32,7 @@ Numba Implementations
 Factorization
 -------------
 
-.. automodule:: kungfu_pandas.groupby.factorization
+.. automodule:: groupby_lib.groupby.factorization
    :members:
    :undoc-members:
    :show-inheritance:
@@ -40,7 +40,7 @@ Factorization
 Utilities
 ---------
 
-.. automodule:: kungfu_pandas.util
+.. automodule:: groupby_lib.util
    :members:
    :undoc-members:
    :show-inheritance:
@@ -48,7 +48,7 @@ Utilities
 Numeric Operations
 ------------------
 
-.. automodule:: kungfu_pandas.nanops
+.. automodule:: groupby_lib.nanops
    :members:
    :undoc-members:
    :show-inheritance:
@@ -56,12 +56,12 @@ Numeric Operations
 Plotting
 --------
 
-.. automodule:: kungfu_pandas.plotting
+.. automodule:: groupby_lib.plotting
    :members:
    :undoc-members:
    :show-inheritance:
 
-.. automodule:: kungfu_pandas.plotting.group_scatter
+.. automodule:: groupby_lib.plotting.group_scatter
    :members:
    :undoc-members:
    :show-inheritance:
@@ -69,7 +69,7 @@ Plotting
 Extensions
 ----------
 
-.. automodule:: kungfu_pandas.extensions
+.. automodule:: groupby_lib.extensions
    :members:
    :undoc-members:
    :show-inheritance:

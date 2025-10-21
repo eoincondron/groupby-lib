@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from kungfu_pandas.groupby.api import DataFrameGroupBy, SeriesGroupBy
+from groupby_lib.groupby.api import DataFrameGroupBy, SeriesGroupBy
 
 
 class TestRollingMask:
