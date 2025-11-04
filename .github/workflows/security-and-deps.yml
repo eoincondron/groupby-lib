@@ -126,7 +126,7 @@ jobs:
         done
     
     - name: Upload outdated packages report
-      uses: actions/upload-artifact@v
+      uses: actions/upload-artifact@v4
       with:
         name: outdated-packages
         path: outdated-packages.json
