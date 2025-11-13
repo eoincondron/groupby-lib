@@ -682,4 +682,5 @@ def test_monotonic_factorization_on_montonic(use_chunks, partial, arr_type):
     expected_codes, expected_labels = factorize_1d(sorted_arr)
     if not partial:
         np.testing.assert_array_equal(codes, expected_codes)
-        np.testing.assert_array_equal(labels, expected_labels)
+        # labels is now a pd.Index, so compare with expected_labels (also pd.Index)
+        pd.testing.assert_index_equal(labels, expected_labels)

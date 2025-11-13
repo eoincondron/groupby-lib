@@ -8,7 +8,9 @@ import pyarrow as pa
 
 from groupby_lib.util import (
     ArrayType1D,
-    _maybe_cast_timestamp_arr,
+    pandas_type_from_array,
+    is_pyarrow_backed,
+    _convert_timestamp_to_tz_unaware,
     _val_to_numpy,
     get_array_name,
     parallel_map,
@@ -72,7 +74,7 @@ def _monotonic_factorization(arr_list, total_len):
     return i + 1, codes, labels[:n_labels]
 
 
-def monotonic_factorization(arr: ArrayType1D) -> Tuple[int, np.ndarray, np.ndarray]:
+def monotonic_factorization(arr: ArrayType1D) -> Tuple[int, np.ndarray, pd.Index]:
     """
     Factorize an array using optimized monotonic factorization.
 
@@ -98,10 +100,10 @@ def monotonic_factorization(arr: ArrayType1D) -> Tuple[int, np.ndarray, np.ndarr
         Integer codes representing the factorized values. Only elements up to
         `cutoff` contain valid codes; remaining elements are uninitialized.
         Shape: (len(arr),), dtype: np.uint32
-    labels : np.ndarray
-        Unique values found during monotonic factorization. Only elements up to
-        the number of unique values found are valid; remaining elements are
-        uninitialized. The dtype matches the original array's dtype.
+    labels : pd.Index
+        Unique values found during monotonic factorization as a pandas Index.
+        Only elements up to the number of unique values found are valid; remaining
+        elements are uninitialized. The dtype matches the original array's dtype.
 
     Notes
     -----
@@ -132,13 +134,21 @@ def monotonic_factorization(arr: ArrayType1D) -> Tuple[int, np.ndarray, np.ndarr
     >>> cutoff
     3
     """
+    pd_type = pandas_type_from_array(arr)
+
+    if pd_type.kind == "M":
+        arr, pd_type = _convert_timestamp_to_tz_unaware(arr)
+
     arr_list = _val_to_numpy(arr, as_list=True)
-    arr_list, orig_types = zip(*list(map(_maybe_cast_timestamp_arr, arr_list)))
-    orig_type = orig_types[0]
 
     total_len = len(arr)
     cutoff, codes, labels = _monotonic_factorization(arr_list, total_len)
-    labels = labels.astype(orig_type)
+    # Convert labels to pd.Index with proper dtype handling
+    if pd_type.kind == "M":
+        labels = pd.Index(labels.view(int), dtype=pd_type, copy=False)
+    else:
+        labels = pd.Index(labels, dtype=pd_type, copy=False)
+
     return cutoff, codes, labels
 
 
@@ -254,9 +264,7 @@ def factorize_1d(
     if isinstance(values, pd.RangeIndex):
         return factorize_range_index(values)
 
-    if isinstance(values, (pl.Series, pa.Array, pa.ChunkedArray)) or (
-        hasattr(values, "dtype") and isinstance(values.dtype, pd.ArrowDtype)
-    ):
+    if is_pyarrow_backed(values):
         return factorize_arrow_arr(values)
 
     if not isinstance(values, pd.Series):
@@ -273,7 +281,7 @@ def factorize_1d(
         labels = pd.Index([False, True], name=values.name)
         return codes, labels
     else:
-        codes, uniques = pd.factorize(values.values, use_na_sentinel=True)
+        codes, uniques = pd.factorize(values, use_na_sentinel=True)
 
         # Handle sorting manually if needed
         if sort and len(uniques) > 0:
