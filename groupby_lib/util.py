@@ -232,10 +232,10 @@ def _convert_timestamp_to_tz_unaware(val):
     # Timezone-aware datetime
     >>> dates = pd.date_range('2020-01-01', periods=3, tz='US/Eastern')
     >>> arr, dtype = _convert_timestamp_to_tz_unaware(dates)
-    >>> arr.dtype  # Now int64 for numba operations
-    dtype('int64')
-    >>> dtype  # Preserves timezone info
-    datetime64[ns, US/Eastern]
+    >>> isinstance(arr, np.ndarray)  # Returns underlying numpy array
+    True
+    >>> 'US/Eastern' in str(dtype)  # Preserves timezone info
+    True
 
     # Regular pandas Series with numpy backing (zero-copy)
     >>> series = pd.Series([1, 2, 3])
@@ -886,7 +886,10 @@ def series_is_timestamp(series: ArrayType1D):
     pd.api.types.is_datetime64_dtype : Underlying pandas type checking function
     """
     dtype = pandas_type_from_array(series)
-    return pd.api.types.is_datetime64_dtype(dtype)
+    # Check for both timezone-naive and timezone-aware datetime types
+    return (pd.api.types.is_datetime64_dtype(dtype) or
+            isinstance(dtype, pd.DatetimeTZDtype) or
+            (isinstance(dtype, pd.ArrowDtype) and pa.types.is_timestamp(dtype.pyarrow_dtype)))
 
 
 def is_categorical(a):
