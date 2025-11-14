@@ -39,6 +39,9 @@ ArrayCollection = (
 )
 
 
+THRESHOLD_FOR_CHUNKED_FACTORIZE = 1_000_000
+
+
 def array_to_series(arr: ArrayType1D):
     """
     Convert various array types to pandas Series.
@@ -203,7 +206,8 @@ class GroupBy:
                 # TODO: estimate number of uniques based on initial slice of array
                 # and do not factorize in chunks when number of uniques is estimated to be large
                 factorize_in_chunks = (
-                    factorize_large_inputs_in_chunks and len(group_key) >= 1_000_000
+                    factorize_large_inputs_in_chunks
+                    and len(group_key) >= THRESHOLD_FOR_CHUNKED_FACTORIZE
                 ) or chunked
 
             if factorize_in_chunks:
@@ -411,7 +415,7 @@ class GroupBy:
                     ]
                 ),
             )
-        
+
         type_list = [None] * len(value_list)
         for i, val in enumerate(value_list):
             if series_is_timestamp(val):

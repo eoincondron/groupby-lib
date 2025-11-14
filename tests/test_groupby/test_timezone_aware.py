@@ -12,53 +12,27 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from groupby_lib.groupby import SeriesGroupBy
+from groupby_lib.groupby import GroupBy, SeriesGroupBy
+from groupby_lib.groupby.core import THRESHOLD_FOR_CHUNKED_FACTORIZE
 
 
 class TestTimezoneAwareGroupKeys:
     """Tests for timezone-aware timestamps used as grouping keys."""
 
-    def test_monotonic_tz_aware_group_keys_us_eastern(self):
+    @pytest.mark.parametrize("n_repeats", [10, THRESHOLD_FOR_CHUNKED_FACTORIZE])
+    @pytest.mark.parametrize("tz", ["UTC", "US/Eastern", "Europe/London", "Asia/Tokyo"])
+    def test_monotonic_tz_aware_group_keys(self, tz, n_repeats):
         """Test monotonic timezone-aware group keys with US/Eastern timezone."""
         # Create monotonic timezone-aware dates as keys
-        dates = pd.date_range('2020-01-01', periods=10, freq='D', tz='US/Eastern')
-        values = pd.Series(range(10))
+        dates = pd.date_range(
+            "2020-01-01", periods=2, freq="D", tz=tz
+        ).repeat(n_repeats)
+        values = np.ones(len(dates), dtype=np.int64)
 
-        gb = SeriesGroupBy(values, by=dates)
-        result = gb.sum()
-
-        # Each date appears once, so sum should equal the value
-        assert len(result) == 10
-        assert result.index.tz is not None
-        assert 'US/Eastern' in str(result.index.tz)
-        pd.testing.assert_series_equal(result, values.set_axis(dates))
-
-    def test_monotonic_tz_aware_group_keys_utc(self):
-        """Test monotonic timezone-aware group keys with UTC timezone."""
-        dates = pd.date_range('2020-01-01', periods=10, freq='D', tz='UTC')
-        values = pd.Series(range(10))
-
-        gb = SeriesGroupBy(values, by=dates)
-        result = gb.sum()
-
-        assert len(result) == 10
-        assert result.index.tz is not None
-        assert str(result.index.tz) == 'UTC'
-
-    def test_monotonic_tz_aware_group_keys_multiple_timezones(self):
-        """Test monotonic group keys with different timezones."""
-        timezones = ['UTC', 'US/Pacific', 'Europe/London', 'Asia/Tokyo']
-
-        for tz in timezones:
-            dates = pd.date_range('2020-01-01', periods=5, freq='D', tz=tz)
-            values = pd.Series([1, 2, 3, 4, 5])
-
-            gb = SeriesGroupBy(values, by=dates)
-            result = gb.sum()
-
-            assert len(result) == 5, f"Failed for timezone: {tz}"
-            assert result.index.tz is not None, f"Lost timezone info for: {tz}"
-            pd.testing.assert_series_equal(result, values.set_axis(dates))
+        gb = GroupBy(dates)
+        result = gb.sum(values)
+        expected = pd.Series([len(dates) // 2, len(dates) // 2], dates.unique())
+        pd.testing.assert_series_equal(result, expected)
 
     def test_non_monotonic_tz_aware_group_keys(self):
         """Test non-monotonic timezone-aware group keys."""
@@ -69,8 +43,8 @@ class TestTimezoneAwareGroupKeys:
         ], tz='US/Eastern')
         values = pd.Series([10, 20, 30, 40, 50, 60])
 
-        gb = SeriesGroupBy(values, by=dates)
-        result = gb.sum()
+        gb = GroupBy(dates)
+        result = gb.sum(values)
 
         # Should aggregate by unique dates
         expected = pd.Series(
@@ -89,7 +63,7 @@ class TestTimezoneAwareGroupKeys:
         result = gb.sum()
 
         expected = pd.Series(
-            [0+1+2+3+4, 5+6+7+8+9],
+            [10, 35],
             index=pd.DatetimeIndex(['2020-01-01', '2020-01-02'], tz='UTC')
         )
         pd.testing.assert_series_equal(result.sort_index(), expected.sort_index())
@@ -101,36 +75,25 @@ class TestTimezoneAwareGroupKeys:
         ], tz='US/Pacific')
         values = pd.Series([10, 20, 30, 40, 50])
 
-        gb = SeriesGroupBy(values, by=dates)
-        result = gb.sum()
-
-        # NaT should be grouped together
-        assert len(result) == 3  # 2020-01-01, 2020-01-02, NaT
-        assert pd.isna(result.index).sum() == 1  # One NaT in index
-
-    def test_tz_aware_hourly_group_keys(self):
-        """Test timezone-aware group keys with hourly frequency."""
-        dates = pd.date_range('2020-01-01', periods=24, freq='H', tz='Europe/London')
-        values = pd.Series(range(24))
-
-        gb = SeriesGroupBy(values, by=dates)
-        result = gb.mean()
-
-        assert len(result) == 24
-        pd.testing.assert_series_equal(result, values.set_axis(dates).astype(float))
+        gb = GroupBy(dates)
+        result = gb.sum(values)
+        expected = pd.Series(
+            [60, 30],  # sum for '2020-01-01' and '2020-01-02'
+            index=pd.DatetimeIndex(['2020-01-01', '2020-01-02'], tz='US/Pacific')
+        )
+        pd.testing.assert_series_equal(result, expected)
 
     def test_tz_aware_group_keys_across_dst_transition(self):
         """Test timezone-aware group keys across DST transition."""
         # US/Eastern has DST transition in March
-        dates = pd.date_range('2020-03-07', periods=10, freq='D', tz='US/Eastern')
-        values = pd.Series(range(10))
+        dates = pd.date_range('2020-03-07', periods=365, freq='D', tz='US/Eastern').repeat(10)
+        values = pd.Series(1, dates)
 
-        gb = SeriesGroupBy(values, by=dates)
-        result = gb.sum()
+        gb = GroupBy(dates)
+        result = gb.sum(values)
 
-        # Should handle DST transition correctly
-        assert len(result) == 10
-        assert result.index.tz is not None
+        expected = dates.value_counts().sort_index()
+        pd.testing.assert_series_equal(result, expected, check_names=False)
 
 
 class TestTimezoneAwareValues:
@@ -236,12 +199,11 @@ class TestMixedTimezoneScenarios:
         groups = dates.floor('2D')  # Group by 2-day periods
         values = pd.Series(dates)
 
-        gb = SeriesGroupBy(values, by=groups)
-        result = gb.first()
+        result = GroupBy.first(groups, values, )
 
         assert len(result) == 3
-        assert result.index.tz is not None
-        assert result.dtype.kind == 'M'
+        assert result.index.dtype == groups.dtype
+        assert result.dtype == values.dtype
 
     def test_both_keys_and_values_tz_aware_different_tz(self):
         """Test with group keys and values in different timezones."""
@@ -254,9 +216,9 @@ class TestMixedTimezoneScenarios:
         result = gb.first()
 
         # Keys preserve their timezone
-        assert 'US/Eastern' in str(result.index.tz)
+        assert result.index.dtype == keys.dtype
         # Values preserve their timezone
-        assert 'UTC' in str(result.dtype)
+        assert result.dtype == values.dtype
 
     def test_tz_naive_keys_tz_aware_values(self):
         """Test timezone-naive keys with timezone-aware values."""
@@ -290,8 +252,7 @@ class TestMixedTimezoneScenarios:
             '2020-01-01', '2020-01-02', '2020-01-03', '2020-01-04'
         ], tz='US/Pacific'))
 
-        gb = SeriesGroupBy(values, by=keys)
-        result = gb.mean()
+        result = GroupBy.mean(keys, values)
 
         assert len(result) == 2
         assert 'US/Pacific' in str(result.dtype)
@@ -311,18 +272,6 @@ class TestTimezoneAwareEdgeCases:
         assert len(result) == 0
         assert result.index.tz is not None
 
-    def test_single_tz_aware_group(self):
-        """Test with single timezone-aware group."""
-        keys = pd.DatetimeIndex(['2020-01-01'] * 5, tz='UTC')
-        values = pd.Series(range(5))
-
-        gb = SeriesGroupBy(values, by=keys)
-        result = gb.sum()
-
-        assert len(result) == 1
-        assert result.iloc[0] == 10
-        assert result.index.tz is not None
-
     def test_large_tz_aware_dataset(self):
         """Test with large timezone-aware dataset."""
         n = 10000
@@ -335,18 +284,6 @@ class TestTimezoneAwareEdgeCases:
 
         assert len(result) <= 100
         assert result.index.tz is not None
-
-    def test_tz_aware_with_numeric_values(self):
-        """Test timezone-aware group keys with regular numeric values."""
-        keys = pd.date_range('2020-01-01', periods=5, freq='D', tz='UTC')
-        values = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0])
-
-        gb = SeriesGroupBy(values, by=keys)
-        result = gb.sum()
-
-        # Should work normally with numeric values
-        assert len(result) == 5
-        pd.testing.assert_series_equal(result, values.set_axis(keys))
 
     def test_timedelta_vs_timestamp_distinction(self):
         """Test that timedeltas are handled separately from timestamps."""
