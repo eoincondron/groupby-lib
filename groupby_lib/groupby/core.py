@@ -14,6 +14,9 @@ from ..util import (
     ArrayType1D,
     ArrayType2D,
     _val_to_numpy,
+    series_is_timestamp,
+    _convert_timestamp_to_tz_unaware,
+    pandas_type_from_array,
     array_split_with_chunk_handling,
     convert_data_to_arr_list_and_keys,
     get_array_name,
@@ -409,6 +412,13 @@ class GroupBy:
                     ]
                 ),
             )
+        
+        type_list = [None] * len(value_list)
+        for i, val in enumerate(value_list):
+            if series_is_timestamp(val):
+                value_list[i], type_list[i] = _convert_timestamp_to_tz_unaware(val)
+            else:
+                type_list[i] = pandas_type_from_array(val)
 
         to_check = value_list
         if mask is not None and pd.api.types.is_bool_dtype(mask):
@@ -427,7 +437,7 @@ class GroupBy:
                     "Pandas index of inputs does not match that of the group keys"
                 )
 
-        return value_names, value_list, common_index
+        return value_names, value_list, type_list, common_index
 
     def _add_margins(
         self,
@@ -449,7 +459,9 @@ class GroupBy:
         )
 
     def _build_arg_dict_for_function(self, func, values, mask, **kwargs):
-        value_names, value_list, common_index = self._preprocess_arguments(values, mask)
+        value_names, value_list, type_list, common_index = self._preprocess_arguments(
+            values, mask
+        )
 
         sig = signature(func)
         shared_kwargs = dict(
@@ -467,7 +479,7 @@ class GroupBy:
         keys = (name if name else f"_arr_{i}" for i, name in enumerate(value_names))
         arg_dict = {key: args.args for key, args in zip(keys, bound_args)}
 
-        return arg_dict, common_index
+        return arg_dict, type_list, common_index
 
     def _find_first_chunk_in_slice(self, mask: slice) -> int:
         """
@@ -666,7 +678,9 @@ class GroupBy:
         if func_is_mean:
             effective_func_name = "sum"  # mean is calculated as sum/count
 
-        value_names, value_list, common_index = self._preprocess_arguments(values, mask)
+        value_names, value_list, type_list, common_index = self._preprocess_arguments(
+            values, mask
+        )
         return_1d = (
             (len(value_list) == 1)
             and isinstance(values, ArrayType1D)
@@ -684,21 +698,29 @@ class GroupBy:
             mask=mask,
         )
 
+        results, counts = map(list, zip(*results))
         result_len = len(self.result_index)
+
+        for i, pd_type in enumerate(type_list):
+            if pd_type.kind == "M":
+                results[i] = pd.Series(
+                    results[i][:result_len].view(int),
+                    self.result_index,
+                    dtype=pd_type,
+                    copy=False,
+                )
+
         result_df = pd.DataFrame(
             {
                 key: result[:result_len]
-                for key, (result, count) in zip(result_col_names, results)
+                for key, result in zip(result_col_names, results)
             },
             index=self.result_index,
             copy=False,
         )
 
         count_df = pd.DataFrame(
-            {
-                key: count[:result_len]
-                for key, (result, count) in zip(result_col_names, results)
-            },
+            {key: count[:result_len] for key, count in zip(result_col_names, counts)},
             index=self.result_index,
             copy=False,
         )
@@ -1005,7 +1027,9 @@ class GroupBy:
             The median of the values for each group.
             If `transform` is True, returns a Series/DataFrame with the same shape as input.
         """
-        value_names, value_list, common_index = self._preprocess_arguments(values, mask)
+        value_names, value_list, type_list, common_index = self._preprocess_arguments(
+            values, mask
+        )
 
         if mask is None:
             mask = True
@@ -1594,7 +1618,7 @@ class GroupBy:
             print("Unifying chunked group-key before cumulative group-by")
             self._unify_group_key_chunks()
 
-        arg_dict, common_index = self._build_arg_dict_for_function(
+        arg_dict, type_list, common_index = self._build_arg_dict_for_function(
             func,
             values=values,
             mask=mask,
@@ -1612,6 +1636,7 @@ class GroupBy:
             out = out.squeeze(axis=1)
             if get_array_name(values) is None:
                 out.name = None
+
         return out
 
     @groupby_method
