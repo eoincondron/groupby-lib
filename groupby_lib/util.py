@@ -182,6 +182,93 @@ def _cast_timestamps_to_ints(arr) -> Tuple[np.ndarray, np.dtype]:
         return arr, arr.dtype
 
 
+def _convert_timestamp_to_tz_unaware(val):
+    """
+    Convert timezone-aware timestamps and other pandas extension types to numpy representation.
+
+    This function handles the conversion of pandas Series/Index with timezone-aware datetime
+    types or PyArrow-backed types to numpy arrays, while preserving the original dtype
+    information. This is necessary because numba operations cannot work directly with
+    timezone-aware datetime types.
+
+    The conversion process:
+    1. For pandas objects with numpy backing: Extract underlying array + preserve dtype
+    2. For Arrow-backed types: Convert to numpy while preserving ArrowDtype metadata
+    3. For timezone-aware datetimes: Converts to UTC int64 nanoseconds + preserves timezone
+
+    Parameters
+    ----------
+    val : pd.Index, pd.Series, np.ndarray, or ArrayType1D
+        Input value to convert. Can be:
+        - pandas Index/Series with numpy or Arrow backing
+        - Raw numpy array
+        - Any type supported by `to_arrow()`
+
+    Returns
+    -------
+    tuple of (np.ndarray | pa.ChunkedArray, np.dtype | pd.ArrowDtype)
+        - First element: Numpy array or PyArrow ChunkedArray representation
+        - Second element: Original pandas dtype (including timezone info for datetimes)
+
+    Notes
+    -----
+    This function is a key part of the timezone-aware handling pipeline:
+
+    1. Timezone-aware timestamps are converted to UTC int64 nanoseconds
+    2. Numba operations work on the int64 representation
+    3. Results are converted back using the preserved dtype information
+
+    For pandas Series/Index backed by numpy arrays (the most common case), this is
+    a zero-copy operation that just extracts the underlying .values array.
+
+    For Arrow-backed data, chunked arrays are preserved as PyArrow ChunkedArray
+    to avoid unnecessary memory copying and concatenation.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> import numpy as np
+
+    # Timezone-aware datetime
+    >>> dates = pd.date_range('2020-01-01', periods=3, tz='US/Eastern')
+    >>> arr, dtype = _convert_timestamp_to_tz_unaware(dates)
+    >>> arr.dtype  # Now int64 for numba operations
+    dtype('int64')
+    >>> dtype  # Preserves timezone info
+    datetime64[ns, US/Eastern]
+
+    # Regular pandas Series with numpy backing (zero-copy)
+    >>> series = pd.Series([1, 2, 3])
+    >>> arr, dtype = _convert_timestamp_to_tz_unaware(series)
+    >>> arr is series.values
+    True
+
+    # Arrow-backed data
+    >>> import pyarrow as pa
+    >>> arrow_arr = pa.array([1, 2, 3])
+    >>> arr, dtype = _convert_timestamp_to_tz_unaware(arrow_arr)
+    >>> isinstance(dtype, pd.ArrowDtype)
+    True
+
+    See Also
+    --------
+    _cast_timestamps_to_ints : For simple numpy datetime64/timedelta64 conversion
+    _val_to_numpy : Main conversion function that uses this internally
+    """
+    if isinstance(val, (pd.Index, pd.Series)) and isinstance(val.values, np.ndarray):
+        return val.values, val.dtype
+    elif isinstance(val, np.ndarray):
+        return val, val.dtype
+    else:
+        arrow = to_arrow(val)
+        if hasattr(arrow, "chunks"):
+            arr = pa.chunked_array([c.to_numpy() for c in arrow.chunks])
+        else:
+            arr = arrow.to_numpy()
+        
+        return arr, pd.ArrowDtype(arrow.type)
+
+
 def check_data_inputs_aligned(
     *args_to_check, check_index: bool = True
 ) -> Callable[[F], F]:
