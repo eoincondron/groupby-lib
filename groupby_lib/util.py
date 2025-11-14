@@ -1346,3 +1346,44 @@ def mean_from_sum_count(sum_: pd.Series, count: pd.Series):
         return (sum_.astype("int64") // count).astype(sum_.dtype)
     else:
         return sum_ / count
+
+
+def argsort_index_numeric_only(index: pd.Index) -> np.ndarray | slice:
+    """
+    Get lexsort indexer for Index, sorting only numeric levels.
+
+    Parameters
+    ----------
+    index : pd.Index
+        Index to sort.
+
+    Returns
+    -------
+    np.ndarray or slice
+        Array of indices that would sort the MultiIndex based on numeric levels only,
+        or slice(None) if no sorting is needed.
+    """
+    if index.nlevels == 1:
+        if (
+            isinstance(index.dtype, pd.CategoricalDtype)
+            or index.is_monotonic_increasing
+        ):
+            return slice(None)
+        else:
+            return index.argsort()
+
+    codes_for_sorting = []
+
+    # For MultiIndex, only include non-categorical levels in sorting
+    for level, codes in zip(index.levels, index.codes):
+        if (
+            isinstance(level.dtype, pd.CategoricalDtype)
+            or level.is_monotonic_increasing
+        ):
+            # Level values are sorted, use codes directly
+            codes_for_sorting.append(codes)
+        else:
+            # Level values are not sorted, need to map codes through argsort
+            codes_for_sorting.append(np.argsort(level.argsort())[codes])
+
+    return pd.core.sorting.lexsort_indexer(codes_for_sorting)

@@ -13,6 +13,7 @@ from groupby_lib.util import (
     _convert_timestamp_to_tz_unaware,
     _get_first_non_null,
     _null_value_for_numpy_type,
+    argsort_index_numeric_only,
     array_split_with_chunk_handling,
     bools_to_categorical,
     convert_data_to_arr_list_and_keys,
@@ -1978,3 +1979,223 @@ class TestSeriesIsTimestamp:
         """Test categorical dates are not detected as timestamp."""
         cat_dates = pd.Series(pd.Categorical(['2020-01-01', '2020-01-02']))
         assert series_is_timestamp(cat_dates) is False
+
+
+class TestArgsortIndexNumericOnly:
+    """Test suite for argsort_index_numeric_only function."""
+
+    def test_single_level_already_sorted(self):
+        """Test single-level index that's already sorted."""
+        index = pd.Index([1, 2, 3, 4, 5])
+        result = argsort_index_numeric_only(index)
+        assert isinstance(result, slice)
+        assert result == slice(None)
+
+    def test_single_level_unsorted(self):
+        """Test single-level index that needs sorting."""
+        index = pd.Index([3, 1, 4, 2, 5])
+        result = argsort_index_numeric_only(index)
+        expected = np.array([1, 3, 0, 2, 4])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_multiindex_first_level_unsorted(self):
+        """Test MultiIndex where first level needs sorting."""
+        index = pd.MultiIndex.from_tuples([
+            (2, 10),
+            (1, 20),
+            (2, 20),
+            (1, 10),
+        ])
+        result = argsort_index_numeric_only(index)
+        # Should sort by first level, then second level
+        expected = np.array([3, 1, 0, 2])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_multiindex_second_level_unsorted(self):
+        """Test MultiIndex where second level needs sorting."""
+        index = pd.MultiIndex.from_tuples([
+            (1, 20),
+            (1, 10),
+            (2, 20),
+            (2, 10),
+        ])
+        result = argsort_index_numeric_only(index)
+        # Should sort by second level within each first level
+        expected = np.array([1, 0, 3, 2])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_multiindex_both_levels_unsorted(self):
+        """Test MultiIndex where both levels need sorting."""
+        index = pd.MultiIndex.from_tuples([
+            (2, 30),
+            (1, 20),
+            (3, 10),
+            (1, 10),
+        ])
+        result = argsort_index_numeric_only(index)
+        # Should sort lexicographically: (1,10), (1,20), (2,30), (3,10)
+        expected = np.array([3, 1, 0, 2])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_multiindex_with_categorical_level(self):
+        """Test MultiIndex with categorical level (should not sort that level)."""
+        index = pd.MultiIndex.from_arrays([
+            pd.Categorical(['b', 'a', 'c'], categories=['a', 'b', 'c']),
+            [3, 1, 2]
+        ])
+        result = index[argsort_index_numeric_only(index)]
+        # Categorical level should not be sorted, only numeric level
+        expected = pd.MultiIndex.from_arrays([
+            ['a', 'b', 'c'],
+            [1, 3, 2]
+        ])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_multiindex_three_levels(self):
+        """Test MultiIndex with three levels."""
+        index = pd.MultiIndex.from_tuples([
+            (3, 2, 1),
+            (1, 3, 2),
+            (2, 1, 3),
+            (1, 2, 1),
+        ])
+        result = argsort_index_numeric_only(index)
+        # Should sort lexicographically
+        expected = np.array([3, 1, 2, 0])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_multiindex_names_preserved(self):
+        """Test that index names are preserved (implicitly tested by sorting)."""
+        index = pd.MultiIndex.from_tuples([
+            (2, 'b'),
+            (1, 'a'),
+        ], names=['level1', 'level2'])
+        result = argsort_index_numeric_only(index)
+        # Numeric level should be sorted
+        assert isinstance(result, np.ndarray)
+
+    def test_single_level_floats(self):
+        """Test single-level index with float values."""
+        index = pd.Index([3.5, 1.2, 4.8, 2.1])
+        result = argsort_index_numeric_only(index)
+        expected = np.array([1, 3, 0, 2])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_multiindex_mixed_numeric_types(self):
+        """Test MultiIndex with mixed int and float levels."""
+        index = pd.MultiIndex.from_tuples([
+            (2, 1.5),
+            (1, 2.5),
+            (2, 0.5),
+            (1, 1.5),
+        ])
+        result = argsort_index_numeric_only(index)
+        expected = np.array([3, 1, 2, 0])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_single_level_with_negative_numbers(self):
+        """Test single-level index with negative numbers."""
+        index = pd.Index([3, -1, 0, -5, 2])
+        result = argsort_index_numeric_only(index)
+        expected = np.array([3, 1, 2, 4, 0])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_multiindex_with_duplicates(self):
+        """Test MultiIndex with duplicate values."""
+        index = pd.MultiIndex.from_tuples([
+            (2, 1),
+            (1, 2),
+            (2, 1),
+            (1, 1),
+        ])
+        result = argsort_index_numeric_only(index)
+        # Should handle duplicates correctly
+        expected = np.array([3, 1, 0, 2])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_empty_index(self):
+        """Test with empty index."""
+        index = pd.Index([])
+        result = argsort_index_numeric_only(index)
+        # Empty index should still work
+        assert isinstance(result, (slice, np.ndarray))
+
+    def test_multiindex_partially_sorted(self):
+        """Test MultiIndex where one level is sorted, another is not."""
+        index = pd.MultiIndex.from_tuples([
+            (1, 30),
+            (1, 10),
+            (1, 20),
+            (2, 10),
+            (2, 30),
+            (2, 20),
+        ])
+        result = argsort_index_numeric_only(index)
+        # First level is sorted, second level needs sorting within each group
+        expected = np.array([1, 2, 0, 3, 5, 4])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_single_level_strings_unsorted(self):
+        """Test single-level string index (non-categorical)."""
+        index = pd.Index(['c', 'a', 'b'])
+        result = argsort_index_numeric_only(index)
+        # String index should be sorted
+        expected = np.array([1, 2, 0])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_large_multiindex(self):
+        """Test with a larger MultiIndex to ensure performance."""
+        np.random.seed(42)
+        n = 1000
+        level1 = np.random.randint(0, 10, n)
+        level2 = np.random.randint(0, 100, n)
+        index = pd.MultiIndex.from_arrays([level1, level2])
+
+        result = argsort_index_numeric_only(index)
+        assert index[result].is_monotonic_increasing
+
+    def test_large_multiindex_with_categoricals(self):
+        """Test with a larger MultiIndex to ensure performance."""
+        np.random.seed(42)
+        n = 1000
+        level0 = pd.Categorical.from_codes(np.arange(n) % 2, ["b", "a"])
+        level1 = np.random.randint(0, 100, n)
+        level2 = np.random.randint(0, 100, n)
+        index = pd.MultiIndex.from_arrays([level0, level1, level2])
+
+        result = argsort_index_numeric_only(index)
+        sorted = index[result]
+        assert sorted.levels[0].tolist() == ["b", "a"]
+        for k in ["a", "b"]:
+            assert pd.Series(index=sorted).loc[k].index.is_monotonic_increasing
+
+    def test_argsort_index_numeric_only_mutlikey_combinations(self):
+        np.random.seed(99)
+        N = 1000
+        cat0 = pd.Categorical.from_codes(np.random.randint(0, 3, N), list("bca"))
+        cat1 = pd.Categorical.from_codes(np.random.randint(0, 4, N), list("qwer"))
+
+        ints0 = np.random.randint(5, 10, N)
+        ints1 = np.random.randint(0, 5, N)
+
+        for key_combo in [
+            (cat0, cat1),
+            (cat1, ints0),
+            (ints0, cat1),
+            (cat0, cat1, ints0),
+            (ints1, cat0, ints0),
+        ]:
+            index = pd.MultiIndex.from_arrays(key_combo).drop_duplicates()
+            sort_key = argsort_index_numeric_only(index)
+            sorted_index = index[sort_key]
+            expected = pd.MultiIndex.from_product(
+                [
+                    (
+                        key.categories
+                        if isinstance(key, pd.Categorical)
+                        else sorted(np.unique(key))
+                    )
+                    for key in key_combo
+                ]
+            )
+            assert (expected == sorted_index).all()

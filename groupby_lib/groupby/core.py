@@ -26,6 +26,7 @@ from ..util import (
     parallel_map,
     series_is_numeric,
     to_arrow,
+    argsort_index_numeric_only,
 )
 from . import numba as numba_funcs
 from .factorization import (
@@ -759,7 +760,9 @@ class GroupBy:
         if (
             self._sort and not self._index_is_sorted
         ):  # combined result for chunked keys are already sorted
-            result_df.sort_index(inplace=True)
+            sort_key = argsort_index_numeric_only(result_df.index)
+            result_df = result_df.iloc[sort_key]  # type: ignore
+            count_df = count_df.iloc[sort_key]  # type: ignore
 
         if margins:
             result_df = self._add_margins(
