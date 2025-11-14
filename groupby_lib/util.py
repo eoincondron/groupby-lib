@@ -633,17 +633,260 @@ def to_arrow(a: ArrayType1D, zero_copy_only: bool = True) -> pa.Array | pa.Chunk
         raise TypeError(f"Cannot convert type {type(a)} to arrow")
 
 
-def series_is_numeric(series: pl.Series | pd.Series):
-    dtype = series.dtype
-    if isinstance(series, pl.Series):
-        return dtype.is_numeric() or dtype.is_temporal() or dtype == pl.Boolean
+def pandas_type_from_array(
+    value: ArrayType1D,
+) -> pd.api.extensions.ExtensionDtype | np.dtype:
+    """
+    Extract pandas-compatible dtype from various array-like types.
+
+    This function provides a unified interface for obtaining pandas dtype information
+    from different array representations (NumPy, pandas, Polars, PyArrow). It's
+    particularly useful for type checking and type preservation when converting
+    between different array libraries.
+
+    Parameters
+    ----------
+    value : ArrayType1D
+        Input array-like object. Can be one of:
+        - pandas Series, Index, or Categorical
+        - polars Series
+        - PyArrow Array or ChunkedArray
+        - NumPy ndarray
+
+    Returns
+    -------
+    pd.api.extensions.ExtensionDtype or np.dtype
+        Pandas-compatible dtype representing the data type of the input array:
+        - For Polars Series: Returns pd.ArrowDtype wrapping the Arrow type
+        - For PyArrow arrays: Returns pd.ArrowDtype wrapping the Arrow type
+        - For pandas/NumPy arrays: Returns the existing .dtype attribute
+
+    Notes
+    -----
+    This function is essential for maintaining type consistency across the library,
+    especially when dealing with timezone-aware datetimes and other extension types
+    that need special handling.
+
+    For Polars Series, the function uses `[:0].to_arrow()` to extract the type without
+    converting the entire array (zero-copy type extraction).
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> import polars as pl
+    >>> import pyarrow as pa
+
+    # NumPy array
+    >>> arr = np.array([1, 2, 3])
+    >>> dtype = pandas_type_from_array(arr)
+    >>> dtype
+    dtype('int64')
+
+    # Pandas Series
+    >>> series = pd.Series([1.0, 2.0, 3.0])
+    >>> dtype = pandas_type_from_array(series)
+    >>> dtype
+    dtype('float64')
+
+    # Polars Series
+    >>> pl_series = pl.Series([1, 2, 3])
+    >>> dtype = pandas_type_from_array(pl_series)
+    >>> isinstance(dtype, pd.ArrowDtype)
+    True
+
+    # PyArrow Array
+    >>> arrow_arr = pa.array([1, 2, 3])
+    >>> dtype = pandas_type_from_array(arrow_arr)
+    >>> isinstance(dtype, pd.ArrowDtype)
+    True
+
+    # Timezone-aware datetime
+    >>> dates = pd.date_range('2020-01-01', periods=3, tz='US/Eastern')
+    >>> dtype = pandas_type_from_array(dates)
+    >>> str(dtype)
+    'datetime64[ns, US/Eastern]'
+
+    See Also
+    --------
+    series_is_numeric : Check if a series contains numeric data
+    series_is_timestamp : Check if a series contains timestamp data
+    """
+    if isinstance(value, pl.Series):
+        return pd.ArrowDtype(value[:0].to_arrow().type)
+    elif isinstance(value, (pa.ChunkedArray, pa.Array)):
+        return pd.ArrowDtype(value.type)
     else:
-        return not (
-            pd.api.types.is_object_dtype(series)
-            or isinstance(dtype, pd.CategoricalDtype)
-            or pd.api.types.is_string_dtype(dtype)
-            or "dictionary" in str(dtype)
-        )
+        return value.dtype
+
+
+def series_is_numeric(series: pl.Series | pd.Series):
+    """
+    Check if a series contains numeric or temporal data suitable for numeric operations.
+
+    This function determines whether a series can be used in numeric computations by
+    checking if its dtype is numeric (int, float, bool) or temporal (datetime, timedelta).
+    It explicitly excludes string, object, and categorical types.
+
+    Parameters
+    ----------
+    series : pl.Series or pd.Series
+        Input series to check. Can be either a Polars or pandas Series.
+
+    Returns
+    -------
+    bool
+        True if the series contains numeric or temporal data, False otherwise.
+        Returns False for:
+        - Object dtype (mixed types)
+        - Categorical dtype
+        - String dtype
+        - Dictionary/categorical types
+
+    Notes
+    -----
+    This function uses `pandas_type_from_array` internally to handle both Polars
+    and pandas Series uniformly.
+
+    Temporal types (datetime, timedelta) are considered "numeric" because they
+    can be converted to int64 and used in aggregation operations like min, max,
+    mean, etc.
+
+    Boolean types are considered numeric (can be used in sum, mean operations).
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> import polars as pl
+    >>> import numpy as np
+
+    # Numeric types
+    >>> series_is_numeric(pd.Series([1, 2, 3]))
+    True
+    >>> series_is_numeric(pd.Series([1.0, 2.0, 3.0]))
+    True
+    >>> series_is_numeric(pl.Series([1, 2, 3]))
+    True
+
+    # Boolean (considered numeric)
+    >>> series_is_numeric(pd.Series([True, False, True]))
+    True
+
+    # Temporal types (considered numeric for aggregations)
+    >>> dates = pd.date_range('2020-01-01', periods=3)
+    >>> series_is_numeric(dates.to_series())
+    True
+
+    # Non-numeric types
+    >>> series_is_numeric(pd.Series(['a', 'b', 'c']))
+    False
+    >>> series_is_numeric(pd.Series(['a', 'b', 'c'], dtype='category'))
+    False
+    >>> series_is_numeric(pd.Series([{'a': 1}, {'b': 2}]))
+    False
+
+    See Also
+    --------
+    pandas_type_from_array : Extract pandas-compatible dtype from arrays
+    series_is_timestamp : Check specifically for timestamp types
+    """
+    dtype = pandas_type_from_array(series)
+    return not (
+        pd.api.types.is_object_dtype(dtype)
+        or isinstance(dtype, pd.CategoricalDtype)
+        or pd.api.types.is_string_dtype(dtype)
+        or "dictionary" in str(dtype)
+    )
+
+
+def series_is_timestamp(series: ArrayType1D):
+    """
+    Check if an array-like object contains datetime/timestamp data.
+
+    This function determines whether the input contains datetime64 data, including
+    timezone-aware timestamps. It works uniformly across different array types
+    (pandas, Polars, PyArrow, NumPy).
+
+    Parameters
+    ----------
+    series : ArrayType1D
+        Input array-like object to check. Can be:
+        - pandas Series, Index, or DatetimeIndex
+        - Polars Series
+        - PyArrow Array or ChunkedArray
+        - NumPy ndarray
+
+    Returns
+    -------
+    bool
+        True if the array contains datetime64 data (with or without timezone),
+        False otherwise.
+
+    Notes
+    -----
+    This function uses `pandas_type_from_array` to extract dtype information
+    uniformly across different array types, then checks if it's a datetime64 type
+    using pandas' `is_datetime64_dtype` utility.
+
+    The function returns True for:
+    - Timezone-naive datetime64 (e.g., 'datetime64[ns]')
+    - Timezone-aware datetime64 (e.g., 'datetime64[ns, US/Eastern]')
+    - Date types that are represented as datetime64
+
+    The function returns False for:
+    - Timedelta types (use a separate check for those)
+    - Date stored as strings or objects
+    - Numeric types (even if they represent Unix timestamps)
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> import polars as pl
+
+    # Timezone-naive datetime
+    >>> dates = pd.date_range('2020-01-01', periods=3)
+    >>> series_is_timestamp(dates)
+    True
+
+    # Timezone-aware datetime
+    >>> dates_tz = pd.date_range('2020-01-01', periods=3, tz='US/Eastern')
+    >>> series_is_timestamp(dates_tz)
+    True
+
+    # Polars datetime
+    >>> pl_dates = pl.Series([pd.Timestamp('2020-01-01')])
+    >>> series_is_timestamp(pl_dates)
+    True
+
+    # NumPy datetime64
+    >>> np_dates = np.array(['2020-01-01', '2020-01-02'], dtype='datetime64[ns]')
+    >>> series_is_timestamp(np_dates)
+    True
+
+    # Not a timestamp (timedelta)
+    >>> timedeltas = pd.to_timedelta(['1 day', '2 days'])
+    >>> series_is_timestamp(timedeltas)
+    False
+
+    # Not a timestamp (string dates)
+    >>> string_dates = pd.Series(['2020-01-01', '2020-01-02'])
+    >>> series_is_timestamp(string_dates)
+    False
+
+    # Not a timestamp (numeric)
+    >>> numbers = pd.Series([1, 2, 3])
+    >>> series_is_timestamp(numbers)
+    False
+
+    See Also
+    --------
+    pandas_type_from_array : Extract pandas-compatible dtype from arrays
+    series_is_numeric : Check if a series contains numeric data
+    pd.api.types.is_datetime64_dtype : Underlying pandas type checking function
+    """
+    dtype = pandas_type_from_array(series)
+    return pd.api.types.is_datetime64_dtype(dtype)
 
 
 def is_categorical(a):
