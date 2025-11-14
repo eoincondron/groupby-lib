@@ -129,7 +129,53 @@ def _null_value_for_numpy_type(np_type: np.dtype):
             raise error
 
 
-def _maybe_cast_timestamp_arr(arr) -> Tuple[np.ndarray, np.dtype]:
+def _cast_timestamps_to_ints(arr) -> Tuple[np.ndarray, np.dtype]:
+    """
+    Convert datetime/timedelta arrays to int64 view for numba operations.
+
+    This function is essential for handling temporal types in numba-compiled functions,
+    which don't understand datetime64/timedelta64 types directly. It returns both the
+    int64 representation AND the original dtype to allow reconstruction after operations.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        Input numpy array, potentially with datetime64 or timedelta64 dtype
+
+    Returns
+    -------
+    tuple of (np.ndarray, np.dtype)
+        - First element: Array as int64 view if temporal, otherwise unchanged
+        - Second element: Original dtype for type reconstruction
+
+    Notes
+    -----
+    This function only handles numpy arrays with 'M' (datetime64) or 'm' (timedelta64)
+    dtype kinds. For timezone-aware types or other pandas extension types, use
+    `_convert_timestamp_to_tz_unaware` instead.
+
+    The int64 view represents:
+    - For datetime64[ns]: Nanoseconds since Unix epoch (1970-01-01)
+    - For timedelta64[ns]: Duration in nanoseconds
+
+    This is a zero-copy operation - no data is duplicated in memory.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> dates = np.array(['2020-01-01', '2020-01-02'], dtype='datetime64[ns]')
+    >>> int_view, orig_dtype = _cast_timestamps_to_ints(dates)
+    >>> int_view.dtype
+    dtype('int64')
+    >>> orig_dtype
+    dtype('<M8[ns]')
+
+    >>> # Non-temporal arrays are returned unchanged
+    >>> ints = np.array([1, 2, 3])
+    >>> result, dtype = _cast_timestamps_to_ints(ints)
+    >>> result is ints
+    True
+    """
     if arr.dtype.kind in "mM":
         return arr.view("int64"), arr.dtype
     else:
