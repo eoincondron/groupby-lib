@@ -265,7 +265,7 @@ def _convert_timestamp_to_tz_unaware(val):
             arr = pa.chunked_array([c.to_numpy() for c in arrow.chunks])
         else:
             arr = arrow.to_numpy()
-        
+
         return arr, pd.ArrowDtype(arrow.type)
 
 
@@ -887,9 +887,42 @@ def series_is_timestamp(series: ArrayType1D):
     """
     dtype = pandas_type_from_array(series)
     # Check for both timezone-naive and timezone-aware datetime types
-    return (pd.api.types.is_datetime64_dtype(dtype) or
-            isinstance(dtype, pd.DatetimeTZDtype) or
-            (isinstance(dtype, pd.ArrowDtype) and pa.types.is_timestamp(dtype.pyarrow_dtype)))
+    return (
+        pd.api.types.is_datetime64_dtype(dtype)
+        or isinstance(dtype, pd.DatetimeTZDtype)
+        or (
+            isinstance(dtype, pd.ArrowDtype)
+            and pa.types.is_timestamp(dtype.pyarrow_dtype)
+        )
+    )
+
+
+def is_pyarrow_backed(a: ArrayType1D) -> bool:
+    """
+    Check if an array-like object is backed by PyArrow.
+
+    Parameters
+    ----------
+    a : ArrayType1D
+        Input array-like object to check. Can be:
+        - pandas Series, Index, or Categorical
+        - Polars Series
+        - PyArrow Array or ChunkedArray
+        - NumPy ndarray
+
+    Returns
+    -------
+    bool
+    True if the array is backed by PyArrow, False otherwise.
+    """
+    if isinstance(a, pd.core.base.PandasObject):
+        return isinstance(a.dtype, pd.ArrowDtype)
+    elif isinstance(a, pl.Series):
+        return True
+    elif isinstance(a, (pa.Array, pa.ChunkedArray)):
+        return True
+    else:
+        return False
 
 
 def is_categorical(a):

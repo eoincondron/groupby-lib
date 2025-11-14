@@ -15,6 +15,7 @@ from ..util import (
     ArrayType2D,
     _val_to_numpy,
     series_is_timestamp,
+    is_pyarrow_backed,
     _convert_timestamp_to_tz_unaware,
     pandas_type_from_array,
     array_split_with_chunk_handling,
@@ -196,11 +197,9 @@ class GroupBy:
             if is_cat:
                 factorize_in_chunks = False
             else:
-                try:
-                    chunked = isinstance(to_arrow(group_key), pa.ChunkedArray)
-                except TypeError:
-                    chunked = False
-
+                chunked = is_pyarrow_backed(group_key) and isinstance(
+                    to_arrow(group_key), pa.ChunkedArray
+                )
                 # TODO: estimate number of uniques based on initial slice of array
                 # and do not factorize in chunks when number of uniques is estimated to be large
                 factorize_in_chunks = (
