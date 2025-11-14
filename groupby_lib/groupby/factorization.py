@@ -34,7 +34,7 @@ def factorize_arrow_arr(
         arr = arr.combine_chunks()
 
     codes = arr.indices.to_numpy(zero_copy_only=False)
-    labels = pd.Index(arr.dictionary.to_numpy(zero_copy_only=False), name=name)
+    labels = pd.Index(arr.dictionary.to_pandas(types_mapper=pd.ArrowDtype), name=name)
 
     return codes, labels
 
