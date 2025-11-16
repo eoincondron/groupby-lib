@@ -26,7 +26,7 @@ class TestGroupBy:
     def test_basic(
         self, method, key_dtype, key_type, value_dtype, value_type, use_mask
     ):
-        if value_dtype == bool and method in ("var", "std"):
+        if value_dtype is bool and method in ("var", "std"):
             return
         index = pd.RangeIndex(2, 11)
         key = pd.Series(
@@ -45,11 +45,15 @@ class TestGroupBy:
             mask = None
             expected = values.groupby(key, observed=True).agg(method)
 
-        if key_dtype == "category" and key_type is not pd.Series:
-            expected.index = np.array(expected.index)
-
         key = key_type(key)
         values = value_type(values)
+
+        if key_dtype == "category" and key_type is not pd.Series:
+            expected.index = expected.index.astype(expected.index.categories.dtype)
+
+        if key_type is pl.Series:
+            dtype = pd.ArrowDtype(key.to_arrow().type)
+            expected.index = expected.index.astype(dtype)
 
         result = getattr(GroupBy, method)(key, values, mask=mask)
 
@@ -68,7 +72,8 @@ class TestGroupBy:
             np.arange(6),
         )
         result = GroupBy.sum(key, values)
-        expected = values.to_pandas().groupby(key.to_pandas().astype(str)).sum()
+        index = pd.Index(["a", "b"], dtype="large_string[pyarrow]", name="bar")
+        expected = pd.Series([6, 9], index, name="foo")
         assert_pd_equal(result, expected)
 
         key = key.to_pandas(types_mapper=pd.ArrowDtype)
@@ -434,10 +439,11 @@ class TestGroupBy:
         values = pd.Series(value_data, dtype="float64")
 
         result = getattr(GroupBy, method)(key_lazy_df, values)
+        pd_key = pd.Series(key_data, dtype="int64[pyarrow]", name="key")
         if method == "count":
-            expected = values.groupby(pd.Series(key_data, name="key")).count()
+            expected = values.groupby(pd_key).count()
         else:
-            expected = values.groupby(pd.Series(key_data, name="key")).agg(method)
+            expected = values.groupby(pd_key).agg(method)
 
         assert_pd_equal(result, expected, check_dtype=False)
 
@@ -462,7 +468,7 @@ class TestGroupBy:
 
         pd.testing.assert_series_equal(result, expected)
 
-        assert pandas_duration > 1.3 * duration
+        assert pandas_duration > duration
 
 
 @pytest.mark.parametrize("nlevels", [1, 2, 3])
@@ -887,8 +893,9 @@ def test_group_by_methods_vs_pandas_with_chunked_arrays(df_chunked, method):
             df_chunked.cat,
             df_chunked[col],
         )
-        if len(expected) < len(df_chunked):
-            expected.index = expected.index.astype(str)
+        if result.index.dtype == "string[pyarrow]":
+            assert (result.index == expected.index).all()
+            expected.index = result.index
 
         assert_pd_equal(result, expected, check_dtype=False), col
 

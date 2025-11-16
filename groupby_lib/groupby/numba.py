@@ -14,7 +14,7 @@ from .. import nanops
 from ..util import (
     ArrayType1D,
     NumbaReductionOps,
-    _maybe_cast_timestamp_arr,
+    _cast_timestamps_to_ints,
     _null_value_for_numpy_type,
     _scalar_func_decorator,
     _val_to_numpy,
@@ -791,7 +791,7 @@ def _group_func_wrap(
         if mask.dtype.kind in "ui":
             fancy_indexing = True
 
-    values, orig_types = zip(*list(map(_maybe_cast_timestamp_arr, values)))
+    values, orig_types = zip(*list(map(_cast_timestamps_to_ints, values)))
     orig_type = orig_types[0]
 
     if reduce_func_name == "sum_squares":
@@ -953,7 +953,7 @@ def group_mean(
     kwargs = locals().copy()
     kwargs["return_count"] = True
     sum_, count = _group_func_wrap("nansum", **kwargs)
-    sum_, orig_type = _maybe_cast_timestamp_arr(sum_)
+    sum_, orig_type = _cast_timestamps_to_ints(sum_)
     mean = sum_ / count
     if orig_type.kind in "mM":
         mean = mean.astype(orig_type)
@@ -1133,7 +1133,7 @@ def _apply_rolling(
 
     rolling_1d_func = rolling_1d_funcs[operation]
     values = _val_to_numpy(values, as_list=True)
-    values, orig_dtypes = zip(*list(map(_maybe_cast_timestamp_arr, values)))
+    values, orig_dtypes = zip(*list(map(_cast_timestamps_to_ints, values)))
     orig_dtype = orig_dtypes[0]
     values_are_times = orig_dtype.kind in "mM"
 
@@ -1731,7 +1731,7 @@ def _apply_cumulative(
     counting = "count" in operation
 
     values = _val_to_numpy(values, as_list=True)
-    values, orig_dtypes = zip(*list(map(_maybe_cast_timestamp_arr, values)))
+    values, orig_dtypes = zip(*list(map(_cast_timestamps_to_ints, values)))
     orig_dtype = orig_dtypes[0]
 
     target = _build_target_for_groupby(

@@ -9,15 +9,21 @@ import pytest
 from groupby_lib.util import (
     MAX_INT,
     MIN_INT,
+    _cast_timestamps_to_ints,
+    _convert_timestamp_to_tz_unaware,
     _get_first_non_null,
     _null_value_for_numpy_type,
+    argsort_index_numeric_only,
     array_split_with_chunk_handling,
     bools_to_categorical,
     convert_data_to_arr_list_and_keys,
     get_array_name,
     is_null,
     nb_dot,
+    pandas_type_from_array,
     pretty_cut,
+    series_is_numeric,
+    series_is_timestamp,
     to_arrow,
 )
 
@@ -1679,3 +1685,517 @@ class TestToArrow:
             assert isinstance(result, pa.Array)
             assert result.type == pa.bool_()
             assert result.to_pylist() == bool_input.tolist()
+
+
+class TestCastTimestampsToInts:
+    """Test suite for _cast_timestamps_to_ints function."""
+
+    def test_datetime64_conversion(self):
+        """Test conversion of datetime64 arrays to int64."""
+        dates = np.array(['2020-01-01', '2020-01-02'], dtype='datetime64[ns]')
+        int_view, orig_dtype = _cast_timestamps_to_ints(dates)
+        
+        # Check that we got an int64 view
+        assert int_view.dtype == np.int64
+        # Check that original dtype was preserved
+        assert orig_dtype == np.dtype('datetime64[ns]')
+        # Verify it's a view (same data)
+        assert int_view.base is dates.base or int_view.base is dates
+
+    def test_timedelta64_conversion(self):
+        """Test conversion of timedelta64 arrays to int64."""
+        deltas = np.array([1, 2, 3], dtype='timedelta64[ns]')
+        int_view, orig_dtype = _cast_timestamps_to_ints(deltas)
+        
+        assert int_view.dtype == np.int64
+        assert orig_dtype == np.dtype('timedelta64[ns]')
+
+    def test_non_temporal_arrays_unchanged(self):
+        """Test that non-temporal arrays are returned unchanged."""
+        # Integer array
+        ints = np.array([1, 2, 3])
+        result, dtype = _cast_timestamps_to_ints(ints)
+        assert result is ints
+        assert dtype == ints.dtype
+        
+        # Float array
+        floats = np.array([1.0, 2.0, 3.0])
+        result, dtype = _cast_timestamps_to_ints(floats)
+        assert result is floats
+        assert dtype == floats.dtype
+
+    def test_zero_copy_operation(self):
+        """Test that this is a zero-copy operation for temporal types."""
+        dates = np.array(['2020-01-01', '2020-01-02'], dtype='datetime64[ns]')
+        int_view, _ = _cast_timestamps_to_ints(dates)
+        
+        # Modify the view and check it affects the original
+        original_value = dates[0]
+        int_view[0] = 0
+        assert dates[0] != original_value
+        assert dates[0] == np.datetime64(0, 'ns')
+
+
+class TestConvertTimestampToTzUnaware:
+    """Test suite for _convert_timestamp_to_tz_unaware function."""
+
+    def test_pandas_series_with_numpy_backing(self):
+        """Test zero-copy extraction from pandas Series with numpy backing."""
+        series = pd.Series([1, 2, 3])
+        arr, dtype = _convert_timestamp_to_tz_unaware(series)
+        
+        # Should return the underlying .values array
+        assert arr is series.values
+        assert dtype == series.dtype
+
+    def test_pandas_index_with_numpy_backing(self):
+        """Test extraction from pandas Index with numpy backing."""
+        index = pd.Index([1, 2, 3])
+        arr, dtype = _convert_timestamp_to_tz_unaware(index)
+        
+        assert isinstance(arr, np.ndarray)
+        assert dtype == index.dtype
+
+    def test_timezone_aware_datetime(self):
+        """Test timezone-aware datetime conversion."""
+        dates = pd.date_range('2020-01-01', periods=3, tz='US/Eastern')
+        arr, dtype = _convert_timestamp_to_tz_unaware(dates)
+
+        # For pandas DatetimeIndex with numpy backing, returns underlying array
+        assert isinstance(arr, np.ndarray)
+        # Should preserve timezone info in dtype
+        assert 'US/Eastern' in str(dtype)
+
+    def test_numpy_array_passthrough(self):
+        """Test that numpy arrays pass through unchanged."""
+        arr_in = np.array([1, 2, 3])
+        arr_out, dtype = _convert_timestamp_to_tz_unaware(arr_in)
+        
+        assert arr_out is arr_in
+        assert dtype == arr_in.dtype
+
+    def test_arrow_backed_data(self):
+        """Test Arrow-backed data conversion."""
+        arrow_arr = pa.array([1, 2, 3])
+        arr, dtype = _convert_timestamp_to_tz_unaware(arrow_arr)
+        
+        assert isinstance(arr, np.ndarray)
+        assert isinstance(dtype, pd.ArrowDtype)
+
+    def test_arrow_chunked_array_preservation(self):
+        """Test that Arrow chunked arrays are preserved."""
+        chunk1 = pa.array([1, 2])
+        chunk2 = pa.array([3, 4])
+        chunked = pa.chunked_array([chunk1, chunk2])
+        
+        arr, dtype = _convert_timestamp_to_tz_unaware(chunked)
+        
+        assert isinstance(arr, pa.ChunkedArray)
+        assert isinstance(dtype, pd.ArrowDtype)
+
+
+class TestPandasTypeFromArray:
+    """Test suite for pandas_type_from_array function."""
+
+    def test_numpy_array(self):
+        """Test dtype extraction from numpy array (from docstring example)."""
+        arr = np.array([1, 2, 3])
+        dtype = pandas_type_from_array(arr)
+        assert dtype == np.dtype('int64')
+
+    def test_pandas_series(self):
+        """Test dtype extraction from pandas Series (from docstring example)."""
+        series = pd.Series([1.0, 2.0, 3.0])
+        dtype = pandas_type_from_array(series)
+        assert dtype == np.dtype('float64')
+
+    def test_polars_series(self):
+        """Test dtype extraction from Polars Series (from docstring example)."""
+        pl_series = pl.Series([1, 2, 3])
+        dtype = pandas_type_from_array(pl_series)
+        assert isinstance(dtype, pd.ArrowDtype)
+
+    def test_pyarrow_array(self):
+        """Test dtype extraction from PyArrow Array (from docstring example)."""
+        arrow_arr = pa.array([1, 2, 3])
+        dtype = pandas_type_from_array(arrow_arr)
+        assert isinstance(dtype, pd.ArrowDtype)
+
+    def test_timezone_aware_datetime(self):
+        """Test dtype extraction preserves timezone info (from docstring example)."""
+        dates = pd.date_range('2020-01-01', periods=3, tz='US/Eastern')
+        dtype = pandas_type_from_array(dates)
+        assert 'US/Eastern' in str(dtype)
+
+    def test_polars_zero_copy_type_extraction(self):
+        """Test that Polars type extraction doesn't convert full array."""
+        # Create a large Polars series to verify zero-copy
+        large_series = pl.Series(list(range(10000)))
+        dtype = pandas_type_from_array(large_series)
+        
+        # Should still get ArrowDtype without converting whole array
+        assert isinstance(dtype, pd.ArrowDtype)
+
+    def test_pandas_categorical(self):
+        """Test dtype extraction from categorical data."""
+        cat = pd.Categorical(['a', 'b', 'a', 'c'])
+        series = pd.Series(cat)
+        dtype = pandas_type_from_array(series)
+        assert isinstance(dtype, pd.CategoricalDtype)
+
+    def test_pyarrow_chunked_array(self):
+        """Test dtype extraction from PyArrow ChunkedArray."""
+        chunked = pa.chunked_array([[1, 2], [3, 4]])
+        dtype = pandas_type_from_array(chunked)
+        assert isinstance(dtype, pd.ArrowDtype)
+
+
+class TestSeriesIsNumeric:
+    """Test suite for series_is_numeric function."""
+
+    def test_integer_series_pandas(self):
+        """Test integer series is numeric (from docstring example)."""
+        assert series_is_numeric(pd.Series([1, 2, 3])) is True
+
+    def test_float_series_pandas(self):
+        """Test float series is numeric (from docstring example)."""
+        assert series_is_numeric(pd.Series([1.0, 2.0, 3.0])) is True
+
+    def test_integer_series_polars(self):
+        """Test integer series is numeric with Polars (from docstring example)."""
+        assert series_is_numeric(pl.Series([1, 2, 3])) is True
+
+    def test_boolean_series(self):
+        """Test boolean series is numeric (from docstring example)."""
+        assert series_is_numeric(pd.Series([True, False, True])) is True
+
+    def test_datetime_series(self):
+        """Test datetime series is numeric (from docstring example)."""
+        dates = pd.date_range('2020-01-01', periods=3)
+        assert series_is_numeric(dates.to_series()) is True
+
+    def test_timedelta_series(self):
+        """Test timedelta series is numeric."""
+        deltas = pd.Series(pd.to_timedelta(['1 day', '2 days', '3 days']))
+        assert series_is_numeric(deltas) is True
+
+    def test_string_series_not_numeric(self):
+        """Test string series is not numeric (from docstring example)."""
+        assert series_is_numeric(pd.Series(['a', 'b', 'c'])) is False
+
+    def test_categorical_series_not_numeric(self):
+        """Test categorical series is not numeric (from docstring example)."""
+        assert series_is_numeric(pd.Series(['a', 'b', 'c'], dtype='category')) is False
+
+    def test_object_series_not_numeric(self):
+        """Test object series is not numeric (from docstring example)."""
+        assert series_is_numeric(pd.Series([{'a': 1}, {'b': 2}])) is False
+
+    def test_mixed_type_object_series(self):
+        """Test mixed-type object series is not numeric."""
+        mixed = pd.Series([1, 'a', 3.0], dtype=object)
+        assert series_is_numeric(mixed) is False
+
+    def test_polars_string_series(self):
+        """Test Polars string series is not numeric."""
+        pl_strings = pl.Series(['a', 'b', 'c'])
+        assert series_is_numeric(pl_strings) is False
+
+    def test_polars_float_series(self):
+        """Test Polars float series is numeric."""
+        pl_floats = pl.Series([1.0, 2.0, 3.0])
+        assert series_is_numeric(pl_floats) is True
+
+
+class TestSeriesIsTimestamp:
+    """Test suite for series_is_timestamp function."""
+
+    def test_timezone_naive_datetime(self):
+        """Test timezone-naive datetime is detected (from docstring example)."""
+        dates = pd.date_range('2020-01-01', periods=3)
+        assert series_is_timestamp(dates) is True
+
+    def test_timezone_aware_datetime(self):
+        """Test timezone-aware datetime is detected (from docstring example)."""
+        dates_tz = pd.date_range('2020-01-01', periods=3, tz='US/Eastern')
+        assert series_is_timestamp(dates_tz) is True
+
+    def test_polars_datetime(self):
+        """Test Polars datetime is detected (from docstring example)."""
+        pl_dates = pl.Series([pd.Timestamp('2020-01-01'), pd.Timestamp('2020-01-02')])
+        assert series_is_timestamp(pl_dates) is True
+
+    def test_numpy_datetime64(self):
+        """Test numpy datetime64 is detected (from docstring example)."""
+        np_dates = np.array(['2020-01-01', '2020-01-02'], dtype='datetime64[ns]')
+        assert series_is_timestamp(np_dates) is True
+
+    def test_timedelta_not_timestamp(self):
+        """Test timedelta is not timestamp (from docstring example)."""
+        timedeltas = pd.to_timedelta(['1 day', '2 days'])
+        assert series_is_timestamp(timedeltas) is False
+
+    def test_string_dates_not_timestamp(self):
+        """Test string dates are not timestamp (from docstring example)."""
+        string_dates = pd.Series(['2020-01-01', '2020-01-02'])
+        assert series_is_timestamp(string_dates) is False
+
+    def test_numeric_not_timestamp(self):
+        """Test numeric series is not timestamp (from docstring example)."""
+        numbers = pd.Series([1, 2, 3])
+        assert series_is_timestamp(numbers) is False
+
+    def test_datetime_series(self):
+        """Test pandas Series with datetime64 dtype."""
+        dates = pd.Series(pd.date_range('2020-01-01', periods=5))
+        assert series_is_timestamp(dates) is True
+
+    def test_datetimeindex(self):
+        """Test DatetimeIndex is detected as timestamp."""
+        dt_index = pd.DatetimeIndex(['2020-01-01', '2020-01-02', '2020-01-03'])
+        assert series_is_timestamp(dt_index) is True
+
+    def test_multiple_timezones(self):
+        """Test various timezones are detected correctly."""
+        for tz in ['UTC', 'US/Pacific', 'Europe/London', 'Asia/Tokyo']:
+            dates = pd.date_range('2020-01-01', periods=3, tz=tz)
+            assert series_is_timestamp(dates) is True, f"Failed for timezone: {tz}"
+
+    def test_datetime_with_nat(self):
+        """Test datetime with NaT values is still detected as timestamp."""
+        dates = pd.Series([pd.Timestamp('2020-01-01'), pd.NaT, pd.Timestamp('2020-01-03')])
+        assert series_is_timestamp(dates) is True
+
+    def test_polars_date_type(self):
+        """Test Polars date type is detected."""
+        pl_dates = pl.Series([pd.Timestamp('2020-01-01').date(), 
+                              pd.Timestamp('2020-01-02').date()])
+        # Note: pl.Date is stored as datetime in Arrow
+        result = series_is_timestamp(pl_dates)
+        # This depends on Polars implementation details
+        assert isinstance(result, bool)
+
+    def test_categorical_dates_not_timestamp(self):
+        """Test categorical dates are not detected as timestamp."""
+        cat_dates = pd.Series(pd.Categorical(['2020-01-01', '2020-01-02']))
+        assert series_is_timestamp(cat_dates) is False
+
+
+class TestArgsortIndexNumericOnly:
+    """Test suite for argsort_index_numeric_only function."""
+
+    def test_single_level_already_sorted(self):
+        """Test single-level index that's already sorted."""
+        index = pd.Index([1, 2, 3, 4, 5])
+        result = argsort_index_numeric_only(index)
+        assert isinstance(result, slice)
+        assert result == slice(None)
+
+    def test_single_level_unsorted(self):
+        """Test single-level index that needs sorting."""
+        index = pd.Index([3, 1, 4, 2, 5])
+        result = argsort_index_numeric_only(index)
+        expected = np.array([1, 3, 0, 2, 4])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_multiindex_first_level_unsorted(self):
+        """Test MultiIndex where first level needs sorting."""
+        index = pd.MultiIndex.from_tuples([
+            (2, 10),
+            (1, 20),
+            (2, 20),
+            (1, 10),
+        ])
+        result = argsort_index_numeric_only(index)
+        # Should sort by first level, then second level
+        expected = np.array([3, 1, 0, 2])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_multiindex_second_level_unsorted(self):
+        """Test MultiIndex where second level needs sorting."""
+        index = pd.MultiIndex.from_tuples([
+            (1, 20),
+            (1, 10),
+            (2, 20),
+            (2, 10),
+        ])
+        result = argsort_index_numeric_only(index)
+        # Should sort by second level within each first level
+        expected = np.array([1, 0, 3, 2])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_multiindex_both_levels_unsorted(self):
+        """Test MultiIndex where both levels need sorting."""
+        index = pd.MultiIndex.from_tuples([
+            (2, 30),
+            (1, 20),
+            (3, 10),
+            (1, 10),
+        ])
+        result = argsort_index_numeric_only(index)
+        # Should sort lexicographically: (1,10), (1,20), (2,30), (3,10)
+        expected = np.array([3, 1, 0, 2])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_multiindex_with_categorical_level(self):
+        """Test MultiIndex with categorical level (should not sort that level)."""
+        index = pd.MultiIndex.from_arrays([
+            pd.Categorical(['b', 'a', 'c'], categories=['a', 'b', 'c']),
+            [3, 1, 2]
+        ])
+        result = index[argsort_index_numeric_only(index)]
+        # Categorical level should not be sorted, only numeric level
+        expected = pd.MultiIndex.from_arrays([
+            ['a', 'b', 'c'],
+            [1, 3, 2]
+        ])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_multiindex_three_levels(self):
+        """Test MultiIndex with three levels."""
+        index = pd.MultiIndex.from_tuples([
+            (3, 2, 1),
+            (1, 3, 2),
+            (2, 1, 3),
+            (1, 2, 1),
+        ])
+        result = argsort_index_numeric_only(index)
+        # Should sort lexicographically
+        expected = np.array([3, 1, 2, 0])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_multiindex_names_preserved(self):
+        """Test that index names are preserved (implicitly tested by sorting)."""
+        index = pd.MultiIndex.from_tuples([
+            (2, 'b'),
+            (1, 'a'),
+        ], names=['level1', 'level2'])
+        result = argsort_index_numeric_only(index)
+        # Numeric level should be sorted
+        assert isinstance(result, np.ndarray)
+
+    def test_single_level_floats(self):
+        """Test single-level index with float values."""
+        index = pd.Index([3.5, 1.2, 4.8, 2.1])
+        result = argsort_index_numeric_only(index)
+        expected = np.array([1, 3, 0, 2])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_multiindex_mixed_numeric_types(self):
+        """Test MultiIndex with mixed int and float levels."""
+        index = pd.MultiIndex.from_tuples([
+            (2, 1.5),
+            (1, 2.5),
+            (2, 0.5),
+            (1, 1.5),
+        ])
+        result = argsort_index_numeric_only(index)
+        expected = np.array([3, 1, 2, 0])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_single_level_with_negative_numbers(self):
+        """Test single-level index with negative numbers."""
+        index = pd.Index([3, -1, 0, -5, 2])
+        result = argsort_index_numeric_only(index)
+        expected = np.array([3, 1, 2, 4, 0])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_multiindex_with_duplicates(self):
+        """Test MultiIndex with duplicate values."""
+        index = pd.MultiIndex.from_tuples([
+            (2, 1),
+            (1, 2),
+            (2, 1),
+            (1, 1),
+        ])
+        result = argsort_index_numeric_only(index)
+        # Should handle duplicates correctly
+        expected = np.array([3, 1, 0, 2])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_empty_index(self):
+        """Test with empty index."""
+        index = pd.Index([])
+        result = argsort_index_numeric_only(index)
+        # Empty index should still work
+        assert isinstance(result, (slice, np.ndarray))
+
+    def test_multiindex_partially_sorted(self):
+        """Test MultiIndex where one level is sorted, another is not."""
+        index = pd.MultiIndex.from_tuples([
+            (1, 30),
+            (1, 10),
+            (1, 20),
+            (2, 10),
+            (2, 30),
+            (2, 20),
+        ])
+        result = argsort_index_numeric_only(index)
+        # First level is sorted, second level needs sorting within each group
+        expected = np.array([1, 2, 0, 3, 5, 4])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_single_level_strings_unsorted(self):
+        """Test single-level string index (non-categorical)."""
+        index = pd.Index(['c', 'a', 'b'])
+        result = argsort_index_numeric_only(index)
+        # String index should be sorted
+        expected = np.array([1, 2, 0])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_large_multiindex(self):
+        """Test with a larger MultiIndex to ensure performance."""
+        np.random.seed(42)
+        n = 1000
+        level1 = np.random.randint(0, 10, n)
+        level2 = np.random.randint(0, 100, n)
+        index = pd.MultiIndex.from_arrays([level1, level2])
+
+        result = argsort_index_numeric_only(index)
+        assert index[result].is_monotonic_increasing
+
+    def test_large_multiindex_with_categoricals(self):
+        """Test with a larger MultiIndex to ensure performance."""
+        np.random.seed(42)
+        n = 1000
+        level0 = pd.Categorical.from_codes(np.arange(n) % 2, ["b", "a"])
+        level1 = np.random.randint(0, 100, n)
+        level2 = np.random.randint(0, 100, n)
+        index = pd.MultiIndex.from_arrays([level0, level1, level2])
+
+        result = argsort_index_numeric_only(index)
+        sorted = index[result]
+        assert sorted.levels[0].tolist() == ["b", "a"]
+        for k in ["a", "b"]:
+            assert pd.Series(index=sorted).loc[k].index.is_monotonic_increasing
+
+    def test_argsort_index_numeric_only_mutlikey_combinations(self):
+        np.random.seed(99)
+        N = 1000
+        cat0 = pd.Categorical.from_codes(np.random.randint(0, 3, N), list("bca"))
+        cat1 = pd.Categorical.from_codes(np.random.randint(0, 4, N), list("qwer"))
+
+        ints0 = np.random.randint(5, 10, N)
+        ints1 = np.random.randint(0, 5, N)
+
+        for key_combo in [
+            (cat0, cat1),
+            (cat1, ints0),
+            (ints0, cat1),
+            (cat0, cat1, ints0),
+            (ints1, cat0, ints0),
+        ]:
+            index = pd.MultiIndex.from_arrays(key_combo).drop_duplicates()
+            sort_key = argsort_index_numeric_only(index)
+            sorted_index = index[sort_key]
+            expected = pd.MultiIndex.from_product(
+                [
+                    (
+                        key.categories
+                        if isinstance(key, pd.Categorical)
+                        else sorted(np.unique(key))
+                    )
+                    for key in key_combo
+                ]
+            )
+            assert (expected == sorted_index).all()
