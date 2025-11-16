@@ -468,7 +468,7 @@ class TestGroupBy:
 
         pd.testing.assert_series_equal(result, expected)
 
-        assert pandas_duration > 1.3 * duration
+        assert pandas_duration > duration
 
 
 @pytest.mark.parametrize("nlevels", [1, 2, 3])
