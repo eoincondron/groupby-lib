@@ -4,30 +4,17 @@ channels:
   - defaults
 dependencies:
   - python>=3.10
-  - numpy>=1.19.0
-  - pandas>=1.3.0
-  - numba>=0.56.0
-  - polars>=0.15.0
-  - pyarrow>=20.0
-  - pytest>=6.0
-  - pytest-xdist
-  - black
-  - flake8
-  - isort
-  - mypy
-  - bandit
-  - safety
-  - matplotlib>=3.0.0
-  - seaborn>=0.11.0
+  - pip
+  # Development and build tools (conda-only)
   - conda-build
   - anaconda-client
   - sphinx>=4.0
   - sphinx-rtd-theme
   - sphinxcontrib-napoleon
   - myst-parser
-  - pip
-  - setuptools
-  - wheel
   - pip:
+    # Install package with all dependencies from pyproject.toml
+    - -e .[dev,plotting,test]
+    # Additional pip-only tools
     - build
     - twine
