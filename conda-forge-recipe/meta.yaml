@@ -13,8 +13,6 @@ build:
   noarch: python
   number: 0
   script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
-  entry_points:
-    - groupby-lib = groupby_lib.__main__:main
 
 requirements:
   host:

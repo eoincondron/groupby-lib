@@ -68,11 +68,6 @@ setup(
             "myst-parser",
         ],
     },
-    entry_points={
-        "console_scripts": [
-            "groupby-lib=groupby_lib.__main__:main",
-        ],
-    },
     keywords="pandas groupby performance numba numpy data-analysis",
     project_urls={
         "Bug Reports": "https://github.com/eoincondron/groupby-lib/issues",
