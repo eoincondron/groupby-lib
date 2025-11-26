@@ -3,7 +3,7 @@
 ## Build/Test/Lint Commands
 - Run all tests: `conda activate groupby-lib-dev && cd /path/to/groupby && python -m pytest tests/`
 - Run single test: `conda activate groupby-lib-dev && cd /path/to/groupby && python -m pytest tests/test_file.py::TestClass::test_method -v`
-- Run with parallelism: `conda activate pd22 groupby-lib-dev cd /path/to/groupby && python -m pytest tests/ -xvs`
+- Run with parallelism: `conda activate groupby-lib-dev cd /path/to/groupby && python -m pytest tests/ -xvs`
 
 ## Code Style Guidelines
 - **Imports**: Order by standard library, third-party, local modules. Group imports within these categories.
@@ -15,4 +15,4 @@
 - **NumPy/Pandas**: Follow NumPy conventions for array handling. Handle NaN values consistently.
 
 ## Dependencies
-Python 3.6+, NumPy, pandas, numba, pytest
+Python 3.10+, NumPy, pandas, numba, pytest
