@@ -24,13 +24,9 @@ class TestMultiKeySorting:
         result = GroupBy([key1, key2]).sum(values)
 
         # Result should be sorted by key1, then key2
-        expected_index = pd.MultiIndex.from_tuples([
-            (1, 10),
-            (1, 20),
-            (2, 10),
-            (2, 20),
-            (3, 30)
-        ])
+        expected_index = pd.MultiIndex.from_tuples(
+            [(1, 10), (1, 20), (2, 10), (2, 20), (3, 30)]
+        )
         expected = pd.Series([200, 400, 300, 100, 500], index=expected_index, name=None)
 
         pd.testing.assert_series_equal(result, expected)
@@ -44,13 +40,9 @@ class TestMultiKeySorting:
         result = GroupBy([key1, key2]).sum(values)
 
         # Result should be sorted by key1, then key2
-        expected_index = pd.MultiIndex.from_tuples([
-            (1, 10),
-            (1, 20),
-            (2, 10),
-            (2, 20),
-            (3, 30)
-        ])
+        expected_index = pd.MultiIndex.from_tuples(
+            [(1, 10), (1, 20), (2, 10), (2, 20), (3, 30)]
+        )
         expected = pd.Series([200, 400, 300, 100, 500], index=expected_index, name=None)
 
         pd.testing.assert_series_equal(result, expected)
@@ -59,7 +51,7 @@ class TestMultiKeySorting:
         """Test GroupBy with three keys."""
         key1 = np.array([2, 1, 2, 1, 2, 1])
         key2 = np.array([20, 10, 10, 20, 20, 10])
-        key3 = np.array(['b', 'a', 'a', 'b', 'a', 'b'])
+        key3 = np.array(["b", "a", "a", "b", "a", "b"])
         values = np.array([1, 2, 3, 4, 5, 6])
 
         result = GroupBy([key1, key2, key3]).sum(values)
@@ -106,11 +98,8 @@ class TestMultiKeySorting:
         result = GroupBy([key1, key2]).sum(values)
 
         # Should aggregate duplicates
-        expected_index = pd.MultiIndex.from_tuples([
-            (1, 10),
-            (2, 20)
-        ])
-        expected = pd.Series([1+2+5+6, 3+4], index=expected_index, name=None)
+        expected_index = pd.MultiIndex.from_tuples([(1, 10), (2, 20)])
+        expected = pd.Series([1 + 2 + 5 + 6, 3 + 4], index=expected_index, name=None)
 
         pd.testing.assert_series_equal(result, expected)
 
@@ -153,13 +142,10 @@ class TestMultiKeySorting:
 
         result = GroupBy([key1, key2]).max(values)
 
-        expected_index = pd.MultiIndex.from_tuples([
-            (1, 10),
-            (1, 20),
-            (2, 10),
-            (2, 20)
-        ])
-        expected = pd.Series([200.0, 400.0, 300.0, 150.0], index=expected_index, name=None)
+        expected_index = pd.MultiIndex.from_tuples([(1, 10), (1, 20), (2, 10), (2, 20)])
+        expected = pd.Series(
+            [200.0, 400.0, 300.0, 150.0], index=expected_index, name=None
+        )
 
         pd.testing.assert_series_equal(result, expected)
 
@@ -171,13 +157,10 @@ class TestMultiKeySorting:
 
         result = GroupBy([key1, key2]).min(values)
 
-        expected_index = pd.MultiIndex.from_tuples([
-            (1, 10),
-            (1, 20),
-            (2, 10),
-            (2, 20)
-        ])
-        expected = pd.Series([200.0, 400.0, 300.0, 100.0], index=expected_index, name=None)
+        expected_index = pd.MultiIndex.from_tuples([(1, 10), (1, 20), (2, 10), (2, 20)])
+        expected = pd.Series(
+            [200.0, 400.0, 300.0, 100.0], index=expected_index, name=None
+        )
 
         pd.testing.assert_series_equal(result, expected)
 
@@ -196,9 +179,9 @@ class TestMultiKeySorting:
 
     def test_empty_arrays_multikey(self):
         """Test multi-key groupby with empty arrays."""
-        key1 = np.array([], dtype='int64')
-        key2 = np.array([], dtype='int64')
-        values = np.array([], dtype='float64')
+        key1 = np.array([], dtype="int64")
+        key2 = np.array([], dtype="int64")
+        values = np.array([], dtype="float64")
 
         result = GroupBy([key1, key2]).sum(values)
 
@@ -219,14 +202,14 @@ class TestMultiKeySorting:
 
     def test_multikey_with_datetime(self):
         """Test GroupBy with datetime keys."""
-        dates = pd.to_datetime(['2020-01-02', '2020-01-01', '2020-01-03', '2020-01-01'])
+        dates = pd.to_datetime(["2020-01-02", "2020-01-01", "2020-01-03", "2020-01-01"])
         category = np.array([1, 1, 2, 2])
         values = np.array([100, 200, 300, 400])
 
         result = GroupBy([dates, category]).sum(values)
 
         # Should be sorted by datetime first
-        assert result.index[0][0] == pd.Timestamp('2020-01-01')
+        assert result.index[0][0] == pd.Timestamp("2020-01-01")
         assert result.index.is_monotonic_increasing
 
     def test_multikey_stability(self):
@@ -237,11 +220,8 @@ class TestMultiKeySorting:
 
         result = GroupBy([key1, key2]).sum(values)
 
-        expected_index = pd.MultiIndex.from_tuples([
-            (1, 10),
-            (2, 20)
-        ])
-        expected = pd.Series([1+2+3, 4+5+6], index=expected_index, name=None)
+        expected_index = pd.MultiIndex.from_tuples([(1, 10), (2, 20)])
+        expected = pd.Series([1 + 2 + 3, 4 + 5 + 6], index=expected_index, name=None)
 
         pd.testing.assert_series_equal(result, expected)
 

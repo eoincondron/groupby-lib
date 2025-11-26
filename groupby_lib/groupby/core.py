@@ -1252,8 +1252,9 @@ class GroupBy:
         pd.Series or pd.DataFrame
             Aggregated values for each group.
         """
+
         def func_name(func: str | Callable) -> str:
-            return func.__name__  if isinstance(func, Callable) else func
+            return func.__name__ if isinstance(func, Callable) else func
 
         if np.ndim(agg_func) == 0:
             func = getattr(self, func_name(agg_func))
@@ -1261,7 +1262,9 @@ class GroupBy:
 
         elif np.ndim(agg_func) == 1:
             if isinstance(values, ArrayType1D):
-                value_list, value_names = [values] * len(agg_func), list(map(func_name, agg_func))
+                value_list, value_names = [values] * len(agg_func), list(
+                    map(func_name, agg_func)
+                )
             else:
                 value_list, value_names = convert_data_to_arr_list_and_keys(values)
 
