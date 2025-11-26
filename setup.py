@@ -14,7 +14,6 @@ with open(os.path.join(this_directory, "groupby_lib", "__init__.py")) as f:
 
 setup(
     name="groupby-lib",
-    version="0.1.0",
     author="Eoin Condron",
     author_email="econdr@gmail.com",
     description="High-performance extension package for pandas with fast groupby operations",
