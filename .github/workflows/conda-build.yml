@@ -45,7 +45,7 @@ jobs:
     - name: Build conda package
       shell: bash -l {0}
       run: |
-        conda-build purge && conda-build conda-recipe/ --output-folder dist/conda --python ${{ matrix.python-version }}
+        conda-build purge-all && conda-build conda-recipe/ --output-folder dist/conda --python ${{ matrix.python-version }}
 
     - name: Test conda package
       shell: bash -l {0}
