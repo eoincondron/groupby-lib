@@ -1222,7 +1222,7 @@ class GroupBy:
     def agg(
         self,
         values: ArrayCollection,
-        agg_func: Callable | str | List[str],
+        agg_func: Callable | str | List[str | Callable],
         mask: Optional[ArrayType1D] = None,
         transform: bool = False,
         margins: bool = False,
@@ -1252,15 +1252,16 @@ class GroupBy:
         pd.Series or pd.DataFrame
             Aggregated values for each group.
         """
+        def func_name(func: str | Callable) -> str:
+            return func.__name__  if isinstance(func, Callable) else func
+
         if np.ndim(agg_func) == 0:
-            if isinstance(agg_func, Callable):
-                agg_func = agg_func.__name__
-            func = getattr(self, agg_func)
+            func = getattr(self, func_name(agg_func))
             return func(values, mask=mask, transform=transform, margins=margins)
 
         elif np.ndim(agg_func) == 1:
             if isinstance(values, ArrayType1D):
-                value_list, value_names = [values] * len(agg_func), agg_func
+                value_list, value_names = [values] * len(agg_func), list(map(func_name, agg_func))
             else:
                 value_list, value_names = convert_data_to_arr_list_and_keys(values)
 
