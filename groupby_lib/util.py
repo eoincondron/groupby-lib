@@ -1015,6 +1015,11 @@ def _val_to_numpy(
     np.ndarray | NumbaList[np.ndarray]
         NumPy array representation of the input, as a list of arrays or a single array,
     """
+    if not isinstance(val, ArrayType1D):
+        raise TypeError(
+            f"Cannot convert input of type {type(val)} with ndim ({np.ndim(val)}) to numpy vector"
+        )
+
     try:
         arrow: pa.Array = to_arrow(val)
         is_chunked = isinstance(
