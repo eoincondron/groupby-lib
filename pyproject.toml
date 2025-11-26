@@ -60,9 +60,6 @@ Homepage = "https://github.com/eoincondron/groupby-lib"
 Source = "https://github.com/eoincondron/groupby-lib"
 Documentation = "https://github.com/eoincondron/groupby-lib/blob/main/README.md"
 
-[project.scripts]
-groupby-lib = "groupby_lib.__main__:main"
-
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["groupby_lib*"]
