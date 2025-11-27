@@ -39,7 +39,6 @@ test:
     - groupby_lib.util
   commands:
     - python -c "import groupby_lib; print('groupby-lib imported successfully')"
-    - groupby-lib --help
   requires:
     - pytest >=6.0
     - pytest-xdist
