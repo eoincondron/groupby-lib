@@ -7,13 +7,10 @@ this_directory = os.path.abspath(os.path.dirname(__file__))
 with open(os.path.join(this_directory, "README.md"), encoding="utf-8") as f:
     long_description = f.read()
 
-# Read version from __init__.py
-version = {}
-with open(os.path.join(this_directory, "groupby_lib", "__init__.py")) as f:
-    exec(f.read(), version)
-
 setup(
     name="groupby-lib",
+    use_scm_version=True,
+    setup_requires=["setuptools-scm"],
     author="Eoin Condron",
     author_email="econdr@gmail.com",
     description="High-performance extension package for pandas with fast groupby operations",
@@ -40,6 +37,7 @@ setup(
         "pandas>=1.3.0",
         "numba>=0.56.0",
         "polars>=0.15.0",
+        "pyarrow>=1.0.0",
     ],
     extras_require={
         "dev": [

@@ -1116,7 +1116,7 @@ def pretty_cut(x: ArrayType1D, bins: ArrayType1D | List, precision: int = None):
     ----------
     x : ArrayType1D
         1-D array-like data to be binned. Can be np.ndarray, pd.Series,
-        pl.Series, pd.Index, or pd.Categorical.
+        pl.Series, pd.Index
     bins : ArrayType1D or list
         Monotonically increasing array of bin edges, defining the intervals.
         Values will be sorted internally.
