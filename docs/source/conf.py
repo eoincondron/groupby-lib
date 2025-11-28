@@ -14,7 +14,16 @@ sys.path.insert(0, os.path.abspath("../.."))
 project = "groupby-lib"
 copyright = "2025, Eoin Condron"
 author = "Eoin Condron"
-release = "0.2.2"
+
+# Get version from package
+try:
+    from importlib.metadata import version as get_version
+    release = get_version("groupby-lib")
+except Exception:
+    # Fallback if package is not installed
+    release = "0.0.0+unknown"
+
+version = ".".join(release.split(".")[:2])  # Short X.Y version
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
