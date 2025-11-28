@@ -462,6 +462,13 @@ class GroupBy:
             levels=levels,
         )
 
+    @staticmethod
+    def _col_names_from_value_names(value_names):
+        return [
+            name if name is not None else f"_arr_{i}"
+            for i, name in enumerate(value_names)
+        ]
+
     def _build_arg_dict_for_function(self, func, values, mask, **kwargs):
         value_names, value_list, type_list, common_index = self._preprocess_arguments(
             values, mask
@@ -480,7 +487,7 @@ class GroupBy:
         bound_args = [
             signature(func).bind(values=x, **shared_kwargs) for x in value_list
         ]
-        keys = (name if name else f"_arr_{i}" for i, name in enumerate(value_names))
+        keys = self._col_names_from_value_names(value_names)
         arg_dict = {key: args.args for key, args in zip(keys, bound_args)}
 
         return arg_dict, type_list, common_index
@@ -692,10 +699,6 @@ class GroupBy:
             and np.ndim(values[0]) == 0
         )
 
-        result_col_names = [
-            name if name else f"_arr_{i}" for i, name in enumerate(value_names)
-        ]
-
         results = self._apply_gb_func_across_chunked_group_keys(
             effective_func_name,
             value_list=value_list,
@@ -722,6 +725,7 @@ class GroupBy:
             result_to_series(arr, pd_type) for arr, pd_type in zip(results, type_list)
         ]
 
+        result_col_names = self._col_names_from_value_names(value_names)
         result_df = pd.DataFrame(
             dict(zip(result_col_names, results)),
             copy=False,
