@@ -1342,6 +1342,175 @@ class GroupBy:
                 "agg_func must by a single function name or an iterable of same"
             )
 
+    def apply(
+        self,
+        values: ArrayCollection,
+        func: Callable,
+        mask: Optional[np.ndarray] = None,
+        *func_args,
+        **func_kwargs,
+    ) -> pd.DataFrame | pd.Series:
+        """
+        Apply a custom function to each group.
+
+        This method applies a numpy-compatible function to each group of values.
+        The function is called with each group's values and any additional arguments
+        provided. When mask is None, it uses the .groups attribute which contains a mapping
+        from group label to fancy indexer, whihc is built once and cached.
+        When mask is not None we must build the same mapping for the masked data.
+        Results are computed in parallel for better performance.
+
+        Parameters
+        ----------
+        values : ArrayCollection
+            Values to apply the function to. Can be a single array/Series or a
+            collection (list, dict) of arrays/Series.
+        func : Callable
+            Function to apply to each group. Should accept numpy arrays as input
+            and work with the signature: func(array, *func_args, **func_kwargs).
+        mask : np.ndarray, optional
+            Boolean mask array indicating which rows to include. If provided,
+            only rows where mask is True will be included in the calculation.
+            Default is None (include all rows).
+        *func_args
+            Additional positional arguments to pass to func.
+        **func_kwargs
+            Additional keyword arguments to pass to func.
+
+        Returns
+        -------
+        pd.Series | pd.DataFrame
+            Results of applying func to each group. Returns a Series if values
+            is 1D and function returns scalar, otherwise returns a DataFrame.
+            If the function returns arrays, columns are created with a MultiIndex.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from groupby_lib import GroupBy
+        >>>
+        >>> key = pd.Series([1, 1, 2, 2, 3])
+        >>> values = pd.Series([10, 20, 30, 40, 50])
+        >>> gb = GroupBy(key)
+        >>>
+        >>> # Apply custom function (e.g., range = max - min)
+        >>> gb.apply(values, lambda x: np.max(x) - np.min(x))
+        1    10
+        2    10
+        3     0
+        dtype: int64
+        """
+        if mask is None:
+            groups = self.groups
+        else:
+            groups = self.build_group_indexers(mask=mask)
+
+        value_names, value_list, type_list, common_index = self._preprocess_arguments(
+            values, mask=mask
+        )
+        value_list = list(map(_val_to_numpy, value_list))
+
+        arg_list = [
+            signature(func).bind(arr[indexer], *func_args, **func_kwargs).args
+            for indexer in groups.values()
+            for arr in value_list
+        ]
+
+        # TODO: allow a target vector
+        results = parallel_map(func, arg_list)
+
+        result_col_names = self._col_names_from_value_names(value_names)
+        if results[0].ndim:
+            columns = pd.MultiIndex.from_product(
+                [result_col_names, range(len(results[0]))]
+            )
+        else:
+            columns = value_names
+
+        result = np.array(results).reshape(len(groups), len(columns))
+        result = pd.DataFrame(result, index=list(groups), columns=columns)
+        if result.shape[1] == 1 and isinstance(values, ArrayType1D):
+            result = result.squeeze(axis=1)
+
+        if self._sort and not self._index_is_sorted:
+            result = result.sort_index()
+
+        return result
+
+    @groupby_method
+    def median(
+        self, values: ArrayCollection, mask: Optional[np.ndarray] = None
+    ) -> pd.Series | pd.DataFrame:
+        """Calculate the median of the provided values for each group.
+        Parameters
+        ----------
+        values : ArrayCollection
+            Values to calculate the median for, can be a single array/Series or a collection of them.
+        mask : Optional[ArrayType1D], default None
+            Boolean mask to filter values before calculating the median.
+        transform : bool, default False
+            If True, return values with the same shape as input rather than one value per group.
+        observed_only : bool, default True
+            If True, only include groups that are observed in the data.
+        Returns
+        -------
+        pd.Series or pd.DataFrame
+            The median of the values for each group.
+            If `transform` is True, returns a Series/DataFrame with the same shape as input.
+        """
+        return self.apply(values=values, mask=mask, func=np.median)
+
+    def quantile(
+        self, values: ArrayCollection, q: List[float], mask: Optional[np.ndarray] = None
+    ) -> pd.Series | pd.DataFrame:
+        """
+        Calculate quantiles of values for each group.
+
+        This method computes specified quantiles for each group using numpy's
+        percentile function. Multiple quantiles can be computed simultaneously.
+
+        Parameters
+        ----------
+        values : ArrayCollection
+            Values to calculate quantiles for. Can be a single array/Series or a
+            collection (list, dict) of arrays/Series.
+        q : List[float]
+            Quantiles to compute, must be between 0 and 1 inclusive.
+            For example, [0.25, 0.5, 0.75] computes the 25th, 50th, and 75th percentiles.
+        mask : np.ndarray, optional
+            Boolean mask array indicating which rows to include. If provided,
+            only rows where mask is True will be included in the calculation.
+            Default is None (include all rows).
+
+        Returns
+        -------
+        pd.Series | pd.DataFrame
+            Quantile values for each group. If multiple quantiles or multiple value
+            columns are provided, returns a DataFrame with a MultiIndex on columns.
+            The second level of the MultiIndex contains the quantile values.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from groupby_lib import GroupBy
+        >>>
+        >>> key = pd.Series([1, 1, 1, 2, 2, 2])
+        >>> values = pd.Series([10, 20, 30, 40, 50, 60])
+        >>> gb = GroupBy(key)
+        >>>
+        >>> # Compute median (0.5 quantile) and quartiles
+        >>> gb.quantile(values, q=[0.25, 0.5, 0.75])
+                0.25  0.50  0.75
+        1       15.0  20.0  25.0
+        2       45.0  50.0  55.0
+        """
+        q_np = np.asarray(q) * 100
+        result = self.apply(values=values, func=np.percentile, q=q_np, mask=mask)
+        if isinstance(result, pd.DataFrame) and result.columns.nlevels == 2:
+            result.columns = result.columns.set_levels(list(q), level=1)
+        return result
+
     @groupby_method
     def ratio(
         self,
