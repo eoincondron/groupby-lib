@@ -295,9 +295,8 @@ def check_data_inputs_aligned(
                     if x is not None:
                         lengths[k] = len(x)
             if len(set(lengths.values())) > 1:
-                description = ", ".join(args_to_check) if args_to_check else "All arguments"
                 raise ValueError(
-                    f"{description} must have equal length. " f"Got lengths: {lengths}"
+                    f"{', '.join(lengths)} must have equal length. " f"Got lengths: {lengths}"
                 )
 
             # Check pandas objects share the same index
