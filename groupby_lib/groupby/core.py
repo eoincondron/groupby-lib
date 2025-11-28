@@ -4,29 +4,31 @@ from functools import cached_property, wraps
 from inspect import signature
 from typing import Callable, List, Literal, Optional, Tuple, Union
 
+import numba as nb
 import numpy as np
 import pandas as pd
 import polars as pl
 import pyarrow as pa
+from numba.typed import List as NumbaList
 from pandas.core.algorithms import factorize_array
 
 from ..util import (
     ArrayType1D,
     ArrayType2D,
-    _val_to_numpy,
-    series_is_timestamp,
-    is_pyarrow_backed,
     _convert_timestamp_to_tz_unaware,
-    pandas_type_from_array,
+    _val_to_numpy,
+    argsort_index_numeric_only,
     array_split_with_chunk_handling,
     convert_data_to_arr_list_and_keys,
     get_array_name,
     is_categorical,
+    is_pyarrow_backed,
     mean_from_sum_count,
+    pandas_type_from_array,
     parallel_map,
     series_is_numeric,
+    series_is_timestamp,
     to_arrow,
-    argsort_index_numeric_only,
 )
 from . import numba as numba_funcs
 from .factorization import (
@@ -330,6 +332,99 @@ class GroupBy:
         """
         return self._result_index
 
+    @staticmethod
+    @nb.njit(nogil=True, fastmath=False)
+    def _build_groups_mapping(
+        group_key_list: NumbaList[np.ndarray],
+        group_counts: np.ndarray,
+        mask: Optional[np.ndarray] = None,
+    ):
+        """
+        Build groups mapping efficiently in a single pass.
+
+        This function creates a mapping from group indices to arrays of row
+        positions where each group occurs. It's optimized for performance with
+        large datasets.
+
+        Parameters
+        ----------
+        group_key_list : np.ndarray
+            List of integer arrays where each element indicates group index for that row
+        group_counts : int
+            Number of elements in each unique groups
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray]
+            - group_starts: Array of starting positions for each group in indices
+            - indices: Flattened array of all row indices sorted by group
+        """
+        ngroups = len(group_counts)
+        # Calculate starting positions for each group in the output array
+        group_starts = np.zeros(ngroups + 1, dtype=np.int64)
+        for i in range(ngroups):
+            group_starts[i + 1] = group_starts[i] + group_counts[i]
+
+        # Create output array to hold all indices
+        total_valid = group_starts[ngroups]
+        indices = np.zeros(total_valid, dtype=np.int64)
+
+        # Track current position for each group while filling
+        current_pos = group_starts[:-1].copy()
+
+        # Fill the indices array
+        i = 0
+        unmasked = mask is None
+        for arr in group_key_list:
+            for k in arr:
+                if k >= 0 and (unmasked or mask[i]):
+                    pos = current_pos[k]
+                    indices[pos] = i
+                    current_pos[k] += 1
+                i += 1
+
+        return group_starts, indices
+
+    def _build_group_indexers(self, mask: Optional[np.ndarray] = None):
+        """
+        Dict mapping group names to row labels.
+
+        Uses optimized numba implementation for better performance with large
+        datasets.
+
+        Returns
+        -------
+        dict
+            Dictionary with group names as keys and arrays of row indices as
+            values
+        mask : np.ndarray, optional
+            Boolean mask array indicating which rows to include. If provided,
+            only rows where mask is True will be included in the groups dictionary.
+            Default is None (include all rows).
+        """
+        # Use numba-optimized function to get the mapping
+        self._unify_group_key_chunks(keep_chunked=True)
+
+        # Do not use self.size here as we want alignment to the codes rather than the sorted labels
+        group_counts = (
+            GroupBy(self.group_ikey).size(mask=mask, observed_only=False).values
+        )
+
+        group_starts, indices = self._build_groups_mapping(
+            group_key_list=_val_to_numpy(self.group_ikey, as_list=True),
+            group_counts=group_counts,
+            mask=None if mask is None else _val_to_numpy(mask, as_list=False),
+        )
+        group_indices = np.array_split(indices, group_starts[1:-1])
+
+        # Build the final dictionary
+        groups_dict = {
+            key: idx
+            for key, idx in zip(self.result_index, group_indices)
+            if len(idx) > 0
+        }
+        return groups_dict
+
     @cached_property
     def groups(self):
         """
@@ -344,10 +439,7 @@ class GroupBy:
             Dictionary with group names as keys and arrays of row indices as
             values
         """
-        self._unify_group_key_chunks(keep_chunked=True)
-        return numba_funcs.build_groups_dict_optimized(
-            self.group_ikey, self.result_index, self.ngroups
-        )
+        return self._build_group_indexers()
 
     def _unify_group_key_chunks(self, keep_chunked=False):
         if self.key_is_chunked:
@@ -1007,58 +1099,6 @@ class GroupBy:
             margins=margins,
             observed_only=observed_only,
         )
-
-    @groupby_method
-    def median(
-        self,
-        values: ArrayCollection,
-        mask: Optional[ArrayType1D] = None,
-        transform: bool = False,
-        observed_only: bool = True,
-    ):
-        """Calculate the median of the provided values for each group.
-        Parameters
-        ----------
-        values : ArrayCollection
-            Values to calculate the median for, can be a single array/Series or a collection of them.
-        mask : Optional[ArrayType1D], default None
-            Boolean mask to filter values before calculating the median.
-        transform : bool, default False
-            If True, return values with the same shape as input rather than one value per group.
-        observed_only : bool, default True
-            If True, only include groups that are observed in the data.
-        Returns
-        -------
-        pd.Series or pd.DataFrame
-            The median of the values for each group.
-            If `transform` is True, returns a Series/DataFrame with the same shape as input.
-        """
-        value_names, value_list, type_list, common_index = self._preprocess_arguments(
-            values, mask
-        )
-
-        if mask is None:
-            mask = True
-        if self.has_null_keys:
-            mask = mask & (self.group_ikey >= 0)
-
-        if mask is True:
-            mask = slice(None)
-
-        tmp_df = pd.DataFrame(
-            {k: v[mask] for k, v in zip(value_names, value_list)}, copy=False
-        )
-        self._unify_group_key_chunks()
-        result = tmp_df.groupby(self.group_ikey[mask], observed=observed_only).median()
-        if transform:
-            result = result.reindex(self.group_ikey, copy=False)
-        else:
-            result.index = self.result_index[result.index]
-            if len(value_list) == 1 and isinstance(values, ArrayType1D):
-                result = result.iloc[:, 0]
-        if self._sort and not self._index_is_sorted:
-            result.sort_index(inplace=True)
-        return result
 
     @groupby_method
     def var(
