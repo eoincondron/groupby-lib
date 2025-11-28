@@ -471,6 +471,20 @@ class GroupBy:
             for i, name in enumerate(value_names)
         ]
 
+    @staticmethod
+    def _maybe_squeeze_to_1d(result, values, n_values):
+        if (
+            (n_values == 1)
+            and isinstance(values, ArrayType1D)
+            or isinstance(values, list)
+            and np.ndim(values[0]) == 0
+        ):
+            result = result.squeeze(axis=1)
+            if get_array_name(values) is None:
+                result.name = None
+
+        return result
+
     def _build_arg_dict_for_function(self, func, values, mask, **kwargs):
         value_names, value_list, type_list, common_index = self._preprocess_arguments(
             values, mask
@@ -694,12 +708,6 @@ class GroupBy:
         value_names, value_list, type_list, common_index = self._preprocess_arguments(
             values, mask
         )
-        return_1d = (
-            (len(value_list) == 1)
-            and isinstance(values, ArrayType1D)
-            or isinstance(values, list)
-            and np.ndim(values[0]) == 0
-        )
 
         results = self._apply_gb_func_across_chunked_group_keys(
             effective_func_name,
@@ -743,14 +751,12 @@ class GroupBy:
             result_df = count_df
 
         if transform:
+            result = self._maybe_squeeze_to_1d(result_df, values, len(value_list))
             self._unify_group_key_chunks()
-            result_df = result_df.iloc[self.group_ikey]
+            result = result.iloc[self.group_ikey]
             if common_index is not None:
-                result_df.index = common_index
-            if return_1d:
-                return result_df.squeeze(axis=1)
-            else:
-                return result_df
+                result.index = common_index
+            return result
 
         if observed_only:
             observed = count_df.iloc[:, 0] > 0
@@ -792,12 +798,7 @@ class GroupBy:
                     }
                 )
 
-        if return_1d:
-            result_df = result_df.squeeze(axis=1)
-            if get_array_name(values) is None:
-                result_df.name = None
-
-        return result_df
+        return self._maybe_squeeze_to_1d(result_df, values, len(value_list))
 
     @groupby_method
     def size(
@@ -1470,14 +1471,16 @@ class GroupBy:
                     names=[*self.result_index.names, None],
                 )[keep]
 
-        return_1d = isinstance(values, ArrayType1D)
+        col_names = self._col_names_from_value_names(value_names)
+
         result = (
-            pd.DataFrame(dict(zip(value_names, value_list)), copy=False)
+            pd.DataFrame(dict(zip(col_names, value_list)), copy=False)
             .iloc[ilocs]
             .set_index(out_index)
         )
-        if return_1d:
-            result = result.squeeze(axis=1)
+        result = self._maybe_squeeze_to_1d(
+            result, values=values, n_values=len(value_names)
+        )
 
         if self._sort:
             result.sort_index(inplace=True)
@@ -1646,18 +1649,16 @@ class GroupBy:
         )
         results = parallel_map(func, arg_dict.values())
 
-        out_dict = {}
+        result_dict = {}
         for key, result in zip(arg_dict, results):
-            out_dict[key] = pd.Series(result, common_index)
+            result_dict[key] = pd.Series(result, common_index)
 
-        return_1d = len(arg_dict) == 1 and isinstance(values, ArrayType1D)
-        out = pd.DataFrame(out_dict)
-        if return_1d:
-            out = out.squeeze(axis=1)
-            if get_array_name(values) is None:
-                out.name = None
+        result = pd.DataFrame(result_dict)
+        result = self._maybe_squeeze_to_1d(
+            result, values=values, n_values=len(arg_dict)
+        )
 
-        return out
+        return result
 
     @groupby_method
     def rolling_sum(
