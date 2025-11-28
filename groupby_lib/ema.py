@@ -119,9 +119,7 @@ def _ema_unadjusted(arr: np.ndarray, alpha: float) -> np.ndarray:
     nogil=True,
     cache=True,
 )
-def _ema_time_weighted(
-    arr: np.ndarray, times: np.ndarray, halflife: int
-) -> np.ndarray:
+def _ema_time_weighted(arr: np.ndarray, times: np.ndarray, halflife: int) -> np.ndarray:
     """
     Calculate time-weighted exponentially-weighted moving average.
 
@@ -282,11 +280,17 @@ def ema(
 
 _EMA_SIGNATURES_GROUPED = [
     nb.types.float64[:](
-        nb.types.int64[:],
+        key_type,
         arr_type,
         nb.types.float64,
         nb.types.int64,
         nb.types.optional(nb.types.bool[:]),
+    )
+    for key_type in (
+        nb.types.int8[:],
+        nb.types.int16[:],
+        nb.types.int32[:],
+        nb.types.int64[:],
     )
     for arr_type in (
         nb.types.float32[:],
@@ -368,12 +372,18 @@ def _ema_grouped(
 
 _EMA_SIGNATURES_GROUPED_TIMED = [
     nb.types.float64[:](
-        nb.types.int64[:],
+        key_type,
         arr_type,
         nb.types.int64[:],
-        nb.types.float64,
+        nb.types.int64,
         nb.types.int64,
         nb.types.optional(nb.types.bool[:]),
+    )
+    for key_type in (
+        nb.types.int8[:],
+        nb.types.int16[:],
+        nb.types.int32[:],
+        nb.types.int64[:],
     )
     for arr_type in (
         nb.types.float32[:],
