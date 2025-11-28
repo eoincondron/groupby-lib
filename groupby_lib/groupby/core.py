@@ -1404,7 +1404,7 @@ class GroupBy:
         if mask is None:
             groups = self.groups
         else:
-            groups = self.build_group_indexers(mask=mask)
+            groups = self._build_group_indexers(mask=mask)
 
         value_names, value_list, type_list, common_index = self._preprocess_arguments(
             values, mask=mask
