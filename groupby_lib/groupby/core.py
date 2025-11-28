@@ -705,21 +705,25 @@ class GroupBy:
         results, counts = map(list, zip(*results))
         result_len = len(self.result_index)
 
-        for i, pd_type in enumerate(type_list):
+        def result_to_series(arr, pd_type):
             if pd_type.kind == "M":
-                results[i] = pd.Series(
-                    results[i][:result_len].view(int),
-                    self.result_index,
-                    dtype=pd_type,
-                    copy=False,
-                )
+                arr = arr.view(int)
+                dtype = pd_type
+            else:
+                dtype = arr.dtype
+            return pd.Series(
+                arr[:result_len],
+                self.result_index,
+                dtype=dtype,
+                copy=False,
+            )
+
+        results = [
+            result_to_series(arr, pd_type) for arr, pd_type in zip(results, type_list)
+        ]
 
         result_df = pd.DataFrame(
-            {
-                key: result[:result_len]
-                for key, result in zip(result_col_names, results)
-            },
-            index=self.result_index,
+            dict(zip(result_col_names, results)),
             copy=False,
         )
 
