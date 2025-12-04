@@ -221,6 +221,8 @@ class GroupBy:
                 *group_key_list, sort=False
             )
 
+        self.result_index.names = group_key_names
+
     @cached_property
     def _group_key_lengths(self):
         return (
@@ -647,7 +649,7 @@ class GroupBy:
 
         return individual_results
 
-    def _apply_gb_func(
+    def _apply_gb_reduction(
         self,
         func_name: str,
         values: Optional[ArrayCollection] = None,
@@ -657,7 +659,7 @@ class GroupBy:
         observed_only: bool = True,
     ) -> Union[pd.Series, pd.DataFrame]:
         """
-        Apply a group-by function to values.
+        Apply a group-by reduction to values.
         If values is a collection or DataFrame/2-D array, applies the function to each element in parallel.
 
         Parameters
@@ -805,7 +807,7 @@ class GroupBy:
         margins: bool = False,
         observed_only: bool = True,
     ):
-        return self._apply_gb_func(
+        return self._apply_gb_reduction(
             "count",
             np.empty(len(self), dtype="int8"),
             mask=mask,
@@ -855,7 +857,7 @@ class GroupBy:
         pd.Series or pd.DataFrame
             Count of non-null values for each group.
         """
-        return self._apply_gb_func(
+        return self._apply_gb_reduction(
             "count", values=values, mask=mask, transform=transform, margins=margins
         )
 
@@ -889,7 +891,7 @@ class GroupBy:
         pd.Series or pd.DataFrame
             Sum of values for each group.
         """
-        return self._apply_gb_func(
+        return self._apply_gb_reduction(
             "sum",
             values=values,
             mask=mask,
@@ -927,7 +929,7 @@ class GroupBy:
         pd.Series or pd.DataFrame
             Mean of values for each group.
         """
-        return self._apply_gb_func(
+        return self._apply_gb_reduction(
             "mean",
             values=values,
             mask=mask,
@@ -967,7 +969,7 @@ class GroupBy:
         pd.Series or pd.DataFrame
             Minimum value for each group.
         """
-        return self._apply_gb_func(
+        return self._apply_gb_reduction(
             "min",
             values=values,
             mask=mask,
@@ -1007,7 +1009,7 @@ class GroupBy:
         pd.Series or pd.DataFrame
             Maximum value for each group.
         """
-        return self._apply_gb_func(
+        return self._apply_gb_reduction(
             "max",
             values=values,
             mask=mask,
@@ -1105,7 +1107,7 @@ class GroupBy:
         kwargs = dict(
             mask=mask, margins=margins, transform=transform, observed_only=observed_only
         )
-        sq_sum = self._apply_gb_func("sum_squares", values=values, **kwargs)
+        sq_sum = self._apply_gb_reduction("sum_squares", values=values, **kwargs)
         sum_sq = self.sum(values=values, **kwargs).astype(float) ** 2
         count = self.count(values=values, **kwargs)
         return (sq_sum - sum_sq / count) / (count - ddof)
@@ -1177,7 +1179,7 @@ class GroupBy:
         pd.Series or pd.DataFrame
             First value for each group.
         """
-        return self._apply_gb_func(
+        return self._apply_gb_reduction(
             "first",
             values=values,
             mask=mask,
@@ -1217,7 +1219,7 @@ class GroupBy:
         pd.Series or pd.DataFrame
             Last value for each group.
         """
-        return self._apply_gb_func(
+        return self._apply_gb_reduction(
             "last",
             values=values,
             mask=mask,
