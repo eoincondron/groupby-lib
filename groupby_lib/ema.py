@@ -366,9 +366,6 @@ def _ema_grouped(
     return out
 
 
-_ema_grouped._can_cache = True
-
-
 _EMA_SIGNATURES_GROUPED_TIMED = [
     nb.types.float64[:](
         nb.types.int64[:],
@@ -469,3 +466,141 @@ def _ema_grouped_timed(
         last_seen[k] = out[i]
 
     return out
+
+
+# Alow signatures that have not been pre-defined to compile JIT
+_ema_grouped._can_cache = True
+_ema_grouped_timed._can_cache = True
+
+
+@check_data_inputs_aligned("group_key", "values", "times", "mask")
+def ema_grouped(
+    group_key: np.ndarray | pd.Series,
+    ngroups: int,
+    values: np.ndarray | pd.Series,
+    alpha: Optional[float] = None,
+    halflife: Optional[str | pd.Timedelta] = None,
+    times: Optional[np.ndarray | pd.DatetimeIndex] = None,
+    mask: Optional[np.ndarray] = None,
+) -> np.ndarray | pd.Series:
+    """Exponentially-weighted moving average (EWMA) by group.
+
+    Computes an exponential moving average for each group independently.
+    Each group maintains its own state and the EMA is calculated
+    within each group separately.
+
+    Parameters
+    ----------
+    group_key : array-like
+        Group identifiers. Must be integers or convertible to integers.
+    values : array-like
+        Input values to compute EMA for.
+    alpha : float, optional
+        Smoothing factor, between 0 and 1. Higher values give more weight
+        to recent data. Either alpha or halflife must be provided (not both).
+    halflife : float, optional
+        Halflife for the exponential decay. Either alpha or halflife must
+        be provided (not both).
+    times : array-like, optional
+        Array of timestamps corresponding to the input data. If provided,
+        the EWMA will be time-weighted based on the halflife parameter.
+        Must be the same length as values.
+
+    Returns
+    -------
+    np.ndarray or pd.Series
+        The exponentially-weighted moving average for each group.
+        Returns the same type as the input values.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from groupby_lib.ema import ema_grouped
+    >>>
+    >>> # Simple grouped EMA
+    >>> groups = np.array([0, 0, 0, 1, 1, 1])
+    >>> values = np.array([1.0, 2.0, 3.0, 10.0, 20.0, 30.0])
+    >>> result = ema_grouped(groups, values, alpha=0.5)
+    >>>
+    >>> # With pandas Series
+    >>> groups = pd.Series([0, 0, 0, 1, 1, 1])
+    >>> values = pd.Series([1.0, 2.0, 3.0, 10.0, 20.0, 30.0])
+    >>> result = ema_grouped(groups, values, halflife=2)
+    >>>
+    >>> # Time-weighted EMA
+    >>> times = pd.date_range('2024-01-01', periods=6, freq='1h')
+    >>> result = ema_grouped(groups, values, halflife='2h', times=times)
+
+    Notes
+    -----
+    - Groups are processed in the order they appear in the data
+    - Each group's EMA starts fresh (no information carries between groups)
+    - NaN values in the input will propagate the last valid EMA value
+    - The adjusted formula is always used (similar to adjust=True in ema)
+
+    See Also
+    --------
+    ema : Exponential moving average for a single series
+    """
+    # Convert inputs to arrays
+    group_key_arr = np.asarray(group_key)
+    values_arr = np.asarray(values)
+
+    # Validate dimensions first
+    if values_arr.ndim != 1:
+        raise ValueError("values must be one-dimensional")
+
+    # Helper to convert back to Series if needed
+    def _maybe_to_series(result):
+        if isinstance(values, pd.Series):
+            return pd.Series(result, index=values.index, name=values.name)
+        return result
+
+    # Handle empty input
+    if len(group_key_arr) == 0:
+        return _maybe_to_series(np.array([], dtype=np.float64))
+
+    # Ensure group_key is integer type
+    if group_key_arr.dtype.kind not in ("i", "u"):
+        # Try to convert to integer
+        try:
+            group_key_arr = group_key_arr.astype(np.int64)
+        except (ValueError, TypeError):
+            raise ValueError("group_key must be integer or convertible to integer")
+
+    if halflife is not None:
+        if alpha is not None:
+            raise ValueError("only one of alpha or halflife should be provided")
+
+        halflife = _halflife_to_int(halflife)
+        alpha = 1 - np.exp(-np.log(2) / halflife)
+
+    nb_kwargs = dict(
+        group_key=group_key_arr,
+        values=values_arr,
+        ngroups=ngroups,
+    )
+    if mask is not None:
+        mask = np.asarray(mask)
+    nb_kwargs["mask"] = mask
+
+    # Handle time-weighted case
+    if times is not None:
+        if halflife is None:
+            raise ValueError("halflife must be provided when times are given")
+
+        nb_kwargs["halflife"] = halflife
+        nb_kwargs["times"] = np.asarray(times).view(np.int64)
+        result = _ema_grouped_timed(**nb_kwargs)
+        return _maybe_to_series(result)
+
+    if alpha is None:
+        raise ValueError("one of alpha or halflife must be provided")
+    else:
+        if not (0 < alpha <= 1):
+            raise ValueError("alpha must be between 0 and 1")
+
+        # Compute grouped EMA
+        result = _ema_grouped(**nb_kwargs, alpha=alpha)
+        return _maybe_to_series(result)
