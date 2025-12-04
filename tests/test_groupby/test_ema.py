@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from groupby_lib import GroupBy
-from groupby_lib.ema import ema, ema_grouped
+from groupby_lib.emas import ema, ema_grouped
 
 
 class TestGroupByEma:

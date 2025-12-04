@@ -1782,7 +1782,7 @@ class GroupBy:
         --------
         ema_grouped : Standalone function for grouped EMA
         """
-        from ..ema import ema_grouped
+        from ..emas import ema_grouped
 
         value_names, value_list, type_list, common_index = self._preprocess_arguments(
             values, mask
