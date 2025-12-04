@@ -445,6 +445,19 @@ class GroupBy:
 
         return value_names, value_list, type_list, common_index
 
+    def _convert_arr_to_series(self, arr, pd_type, index):
+        if pd_type.kind == "M":
+            arr = arr.view(int)
+            dtype = pd_type
+        else:
+            dtype = arr.dtype
+        return pd.Series(
+            arr,
+            index,
+            dtype=dtype,
+            copy=False,
+        )
+
     def _add_margins(
         self,
         result: Union[pd.DataFrame, pd.Series],
@@ -718,21 +731,9 @@ class GroupBy:
         results, counts = map(list, zip(*results))
         result_len = len(self.result_index)
 
-        def result_to_series(arr, pd_type):
-            if pd_type.kind == "M":
-                arr = arr.view(int)
-                dtype = pd_type
-            else:
-                dtype = arr.dtype
-            return pd.Series(
-                arr[:result_len],
-                self.result_index,
-                dtype=dtype,
-                copy=False,
-            )
-
         results = [
-            result_to_series(arr, pd_type) for arr, pd_type in zip(results, type_list)
+            self._convert_arr_to_series(arr[:result_len], pd_type, self.result_index)
+            for arr, pd_type in zip(results, type_list)
         ]
 
         result_col_names = self._col_names_from_value_names(value_names)
@@ -1650,8 +1651,10 @@ class GroupBy:
         results = parallel_map(func, arg_dict.values())
 
         result_dict = {}
-        for key, result in zip(arg_dict, results):
-            result_dict[key] = pd.Series(result, common_index)
+        for key, result, pd_type in zip(arg_dict, results, type_list):
+            result_dict[key] = self._convert_arr_to_series(
+                result, pd_type, common_index
+            )
 
         result = pd.DataFrame(result_dict)
         result = self._maybe_squeeze_to_1d(
