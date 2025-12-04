@@ -7,7 +7,7 @@ groupby-lib GroupBy engine for better performance while maintaining full compati
 
 from abc import ABC, abstractmethod
 from functools import wraps
-from typing import Hashable, Optional, Tuple, Union
+from typing import Hashable, Optional, Tuple, Union, List, Callable
 
 import numpy as np
 import pandas as pd
@@ -251,6 +251,18 @@ class BaseGroupBy(ABC):
     ) -> pd.Series:
         return self._grouper.max(self._obj, mask=mask, margins=margins)
 
+    @groupby_aggregation("Compute median of group values")
+    def median(self, mask: Optional[ArrayType1D] = None) -> pd.Series:
+        return self._grouper.median(self._obj, mask=mask)
+
+    @groupby_aggregation("Compute quantiles of group values")
+    def quantile(
+        self,
+        q: List[float] | np.ndarray,
+        mask: Optional[ArrayType1D] = None,
+    ) -> pd.Series:
+        return self._grouper.quantile(self._obj, q=q, mask=mask)
+
     @groupby_aggregation(
         "Compute count of non-null group values",
         include_numeric_only=False,
@@ -382,26 +394,41 @@ class BaseGroupBy(ABC):
 
     aggregate = agg  # Alias
 
-    def apply(self, func) -> pd.Series:
+    def apply(
+        self,
+        func,
+        mask: Optional[np.ndarray] = None,
+        *func_args,
+        **func_kwargs,
+    ) -> pd.Series:
         """
-        Apply function to each group and combine results.
+        Apply a custom function to each group.
+
+        This method applies a numpy-compatible function to each group of values.
+        The function is called with each group's values and any additional arguments
+        provided. When mask is None, it uses the .groups attribute which contains a mapping
+        from group label to fancy indexer, whihc is built once and cached.
+        When mask is not None we must build the same mapping for the masked data.
+        Results are computed in parallel for better performance.
 
         Parameters
         ----------
-        func : callable
-            Function to apply to each group
-
-        Returns
-        -------
-        pd.Series
-            Series with function results
+        values : ArrayCollection
+            Values to apply the function to. Can be a single array/Series or a
+            collection (list, dict) of arrays/Series.
+        np_func : Callable
+            Function to apply to each group. Should accept numpy arrays as input
+            and work with the signature: np_func(array, *func_args, **func_kwargs).
+        mask : np.ndarray, optional
+            Boolean mask array indicating which rows to include. If provided,
+            only rows where mask is True will be included in the calculation.
+            Default is None (include all rows).
+        *func_args
+            Additional positional arguments to pass to np_func.
+        **func_kwargs
+            Additional keyword arguments to pass to npfunc.
         """
-        result = self._grouper.apply(self._obj, func)
-        return (
-            result
-            if isinstance(result, pd.Series)
-            else pd.Series(result, name=self._obj.name)
-        )
+        return self._grouper.apply(self._obj, func, mask, *func_args, **func_kwargs)
 
     @groupby_cumulative("Cumulative sum")
     def cumsum(self) -> pd.Series:
