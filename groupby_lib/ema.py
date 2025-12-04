@@ -281,7 +281,13 @@ def ema(
 
 
 _EMA_SIGNATURES_GROUPED = [
-    nb.types.float64[:](nb.types.int64[:], arr_type, nb.types.float64, nb.types.int64)
+    nb.types.float64[:](
+        nb.types.int64[:],
+        arr_type,
+        nb.types.float64,
+        nb.types.int64,
+        nb.types.optional(nb.types.bool[:]),
+    )
     for arr_type in (
         nb.types.float32[:],
         nb.types.float64[:],
@@ -293,7 +299,11 @@ _EMA_SIGNATURES_GROUPED = [
 
 @nb.njit(_EMA_SIGNATURES_GROUPED, nogil=True, cache=True)
 def _ema_grouped(
-    group_key: np.ndarray, values: np.ndarray, alpha: float, ngroups: int
+    group_key: np.ndarray,
+    values: np.ndarray,
+    alpha: float,
+    ngroups: int,
+    mask: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """
     Calculate exponentially-weighted moving average by group.
@@ -338,8 +348,10 @@ def _ema_grouped(
     residual_weights = np.zeros(ngroups, dtype="float64")
     last_seen = np.full(ngroups, np.nan, dtype="float64")
 
+    masked = mask is not None
+
     for i, (k, x) in enumerate(zip(group_key, values)):
-        if np.isnan(x):
+        if np.isnan(x) or (masked and not mask[i]):
             out[i] = last_seen[k]
         else:
             out[i] = (x + residuals[k]) / (1 + residual_weights[k])
@@ -359,7 +371,12 @@ _ema_grouped._can_cache = True
 
 _EMA_SIGNATURES_GROUPED_TIMED = [
     nb.types.float64[:](
-        nb.types.int64[:], arr_type, nb.types.int64[:], nb.types.float64, nb.types.int64
+        nb.types.int64[:],
+        arr_type,
+        nb.types.int64[:],
+        nb.types.float64,
+        nb.types.int64,
+        nb.types.optional(nb.types.bool[:]),
     )
     for arr_type in (
         nb.types.float32[:],
@@ -377,6 +394,7 @@ def _ema_grouped_timed(
     times: np.ndarray,
     halflife: int,
     ngroups: int,
+    mask: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """
     Calculate time-weighted exponentially-weighted moving average by group.
@@ -431,14 +449,16 @@ def _ema_grouped_timed(
     last_seen_times = np.zeros(ngroups, dtype="int64")
     last_seen = np.full(ngroups, np.nan, dtype="float64")
 
+    masked = mask is not None
+
     for i, (k, x) in enumerate(zip(group_key, values)):
         if last_seen_times[k] > 0:
-            hl = halflife / (times[i] - last_seen_times[k])
-            beta = np.exp(-np.log(2) / hl)
+            hl = (times[i] - last_seen_times[k]) / halflife
+            beta = np.exp(-np.log(2) * hl)
             residuals[k] *= beta
             residual_weights[k] *= beta
 
-        if np.isnan(x):
+        if np.isnan(x) or (masked and not mask[i]):
             out[i] = last_seen[k]
         else:
             out[i] = (x + residuals[k]) / (1 + residual_weights[k])
