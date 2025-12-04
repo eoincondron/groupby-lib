@@ -1201,58 +1201,6 @@ class GroupBy:
         )
 
     @groupby_method
-    def median(
-        self,
-        values: ArrayCollection,
-        mask: Optional[ArrayType1D] = None,
-        transform: bool = False,
-        observed_only: bool = True,
-    ):
-        """Calculate the median of the provided values for each group.
-        Parameters
-        ----------
-        values : ArrayCollection
-            Values to calculate the median for, can be a single array/Series or a collection of them.
-        mask : Optional[ArrayType1D], default None
-            Boolean mask to filter values before calculating the median.
-        transform : bool, default False
-            If True, return values with the same shape as input rather than one value per group.
-        observed_only : bool, default True
-            If True, only include groups that are observed in the data.
-        Returns
-        -------
-        pd.Series or pd.DataFrame
-            The median of the values for each group.
-            If `transform` is True, returns a Series/DataFrame with the same shape as input.
-        """
-        value_names, value_list, type_list, common_index = self._preprocess_arguments(
-            values, mask
-        )
-
-        if mask is None:
-            mask = True
-        if self.has_null_keys:
-            mask = mask & (self.group_ikey >= 0)
-
-        if mask is True:
-            mask = slice(None)
-
-        tmp_df = pd.DataFrame(
-            {k: v[mask] for k, v in zip(value_names, value_list)}, copy=False
-        )
-        self._unify_group_key_chunks()
-        result = tmp_df.groupby(self.group_ikey[mask], observed=observed_only).median()
-        if transform:
-            result = result.reindex(self.group_ikey, copy=False)
-        else:
-            result.index = self.result_index[result.index]
-            if len(value_list) == 1 and isinstance(values, ArrayType1D):
-                result = result.iloc[:, 0]
-        if self._sort and not self._index_is_sorted:
-            result.sort_index(inplace=True)
-        return result
-
-    @groupby_method
     def var(
         self,
         values: ArrayCollection,
@@ -1641,6 +1589,79 @@ class GroupBy:
             result_df, values=values, n_values=len(value_list)
         )
 
+        return result
+
+    @groupby_method
+    def median(
+        self, values: ArrayCollection, mask: Optional[np.ndarray] = None
+    ) -> pd.Series | pd.DataFrame:
+        """Calculate the median of the provided values for each group.
+        Parameters
+        ----------
+        values : ArrayCollection
+            Values to calculate the median for, can be a single array/Series or a collection of them.
+        mask : Optional[ArrayType1D], default None
+            Boolean mask to filter values before calculating the median.
+        transform : bool, default False
+            If True, return values with the same shape as input rather than one value per group.
+        observed_only : bool, default True
+            If True, only include groups that are observed in the data.
+        Returns
+        -------
+        pd.Series or pd.DataFrame
+            The median of the values for each group.
+            If `transform` is True, returns a Series/DataFrame with the same shape as input.
+        """
+        return self.apply(values=values, mask=mask, func=np.median)
+
+    def quantile(
+        self, values: ArrayCollection, q: List[float], mask: Optional[np.ndarray] = None
+    ) -> pd.Series | pd.DataFrame:
+        """
+        Calculate quantiles of values for each group.
+
+        This method computes specified quantiles for each group using numpy's
+        percentile function. Multiple quantiles can be computed simultaneously.
+
+        Parameters
+        ----------
+        values : ArrayCollection
+            Values to calculate quantiles for. Can be a single array/Series or a
+            collection (list, dict) of arrays/Series.
+        q : List[float]
+            Quantiles to compute, must be between 0 and 1 inclusive.
+            For example, [0.25, 0.5, 0.75] computes the 25th, 50th, and 75th percentiles.
+        mask : np.ndarray, optional
+            Boolean mask array indicating which rows to include. If provided,
+            only rows where mask is True will be included in the calculation.
+            Default is None (include all rows).
+
+        Returns
+        -------
+        pd.Series | pd.DataFrame
+            Quantile values for each group. If multiple quantiles or multiple value
+            columns are provided, returns a DataFrame with a MultiIndex on columns.
+            The second level of the MultiIndex contains the quantile values.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from groupby_lib import GroupBy
+        >>>
+        >>> key = pd.Series([1, 1, 1, 2, 2, 2])
+        >>> values = pd.Series([10, 20, 30, 40, 50, 60])
+        >>> gb = GroupBy(key)
+        >>>
+        >>> # Compute median (0.5 quantile) and quartiles
+        >>> gb.quantile(values, q=[0.25, 0.5, 0.75])
+                0.25  0.50  0.75
+        1       15.0  20.0  25.0
+        2       45.0  50.0  55.0
+        """
+        result = self.apply(values=values, func=np.quantile, q=q, mask=mask)
+        if np.ndim(q) > 0:
+            result.index = result.index.set_levels(q, level=-1)
+        result.index.names = [*result.index.names[:-1], "q"]
         return result
 
     @groupby_method
