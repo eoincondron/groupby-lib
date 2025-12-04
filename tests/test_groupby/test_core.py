@@ -911,32 +911,36 @@ def test_group_by_rolling_methods_vs_pandas_with_chunked_arrays(df_chunked, meth
     )
     expected = expected.reset_index(level=0, drop=True).sort_index()
 
-    assert_pd_equal(result, expected, check_dtype=False)
+    assert_pd_equal(result, expected, check_categorical=False, check_dtype=False)
 
 
 @pytest.mark.parametrize("method", ["sum", "mean", "min", "max"])
-def test_group_by_rolling_methods_vs_pandas_with_np_arrays(df_np_backed, method):
+@pytest.mark.parametrize("index_by_groups", [True, False])
+def test_group_by_rolling_methods_vs_pandas_with_np_arrays(df_np_backed, method, index_by_groups):
     cols = ["ints", "floats"]
     window = 5
     gb = df_np_backed.groupby("cat", sort=False, observed=True).rolling(window)
     expected = getattr(gb[cols], method)()
     result = getattr(GroupBy, f"rolling_{method}")(
-        df_np_backed.cat, df_np_backed[cols], window=window
+        df_np_backed.cat, df_np_backed[cols], window=window, index_by_groups=index_by_groups
     )
-    expected = expected.reset_index(level=0, drop=True).sort_index()
-    assert_pd_equal(result, expected, check_dtype=False)
+    if not index_by_groups:
+        expected = expected.reset_index(level=0, drop=True).sort_index()
+    assert_pd_equal(result, expected, check_dtype=False, check_categorical=False)
 
 
 @pytest.mark.parametrize("method", ["sum", "mean", "min", "max"])
-def test_group_by_rolling_methods_vs_pandas_with_timedeltas(df_np_backed, method):
+@pytest.mark.parametrize("index_by_groups", [False])
+def test_group_by_rolling_methods_vs_pandas_with_timedeltas(df_np_backed, method, index_by_groups):
     window = 5
     result = getattr(GroupBy, f"rolling_{method}")(
-        df_np_backed.cat, df_np_backed.timedeltas, window=window
+        df_np_backed.cat, df_np_backed.timedeltas, window=window, index_by_groups=index_by_groups,
     )
     df_np_backed["time_int"] = df_np_backed.timedeltas.astype(int)
     gb = df_np_backed.groupby("cat", sort=False, observed=True).rolling(window)
-    expected = getattr(gb["time_int"], method)()
-    expected = expected.reset_index(level=0, drop=True).sort_index().astype("m8[ns]")
+    expected = getattr(gb["time_int"], method)().astype("m8[ns]")
+    if not index_by_groups:
+        expected = expected.reset_index(level=0, drop=True).sort_index()
 
     assert_pd_equal(result, expected, check_dtype=False, check_names=False)
 

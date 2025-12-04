@@ -1974,6 +1974,7 @@ class GroupBy:
         func_name: str,
         values: ArrayCollection,
         mask: Optional[ArrayType1D] = None,
+        index_by_groups: bool = False,
         **kwargs,
     ):
         """
@@ -1987,12 +1988,25 @@ class GroupBy:
             Values to aggregate, can be a single array/Series or a collection of them.
         mask : ArrayType1D, optional
             Boolean mask to filter values before calculation.
+        index_by_groups:
+            If True, result is multi-indexed with the outer level corresponding to the group
+            unique group key and sorted by same. This is line with the Pandas behaviour but comes
+            at a significant performance cost.
 
         Returns
         -------
         pd.Series or pd.DataFrame
             Rolling aggregation results with same shape as input.
         """
+        if index_by_groups:
+            # only available for rolling function in-line with Pandas
+            func_name = func_name.replace("rolling_", "")
+            return self.apply(
+                values,
+                lambda s: pd.Series(s).rolling(**kwargs).agg(func_name),
+                mask=mask,
+            )
+
         # Get the appropriate numba function
         func = getattr(numba_funcs, func_name)
 
@@ -2027,6 +2041,7 @@ class GroupBy:
         values: ArrayCollection,
         window: int,
         mask: Optional[ArrayType1D] = None,
+        index_by_groups: bool = False,
     ):
         """
         Calculate rolling sum of values in each group.
@@ -2045,8 +2060,8 @@ class GroupBy:
         pd.Series or pd.DataFrame
             Rolling sum of values for each group, same shape as input.
         """
-        return self._apply_rolling_or_cumulative_func(
-            "rolling_sum", values, window=window, mask=mask
+        return GroupBy._apply_rolling_or_cumulative_func(
+            func_name="rolling_sum", **locals()
         )
 
     @groupby_method
@@ -2055,6 +2070,7 @@ class GroupBy:
         values: ArrayCollection,
         window: int,
         mask: Optional[ArrayType1D] = None,
+        index_by_groups: bool = False,
     ):
         """
         Calculate rolling mean of values in each group.
@@ -2067,14 +2083,18 @@ class GroupBy:
             Size of the rolling window.
         mask : ArrayType1D, optional
             Boolean mask to filter values before calculation.
+        index_by_groups:
+            If True, result is multi-indexed with the outer level corresponding to the group
+            unique group key and sorted by same. This is line with the Pandas behaviour but comes
+            at a significant performance cost.
 
         Returns
         -------
         pd.Series or pd.DataFrame
             Rolling mean of values for each group, same shape as input.
         """
-        return self._apply_rolling_or_cumulative_func(
-            "rolling_mean", values, window=window, mask=mask
+        return GroupBy._apply_rolling_or_cumulative_func(
+            func_name="rolling_mean", **locals()
         )
 
     @groupby_method
@@ -2083,6 +2103,7 @@ class GroupBy:
         values: ArrayCollection,
         window: int,
         mask: Optional[ArrayType1D] = None,
+        index_by_groups: bool = False,
     ):
         """
         Calculate rolling minimum of values in each group.
@@ -2095,14 +2116,18 @@ class GroupBy:
             Size of the rolling window.
         mask : ArrayType1D, optional
             Boolean mask to filter values before calculation.
+        index_by_groups:
+            If True, result is multi-indexed with the outer level corresponding to the group
+            unique group key and sorted by same. This is line with the Pandas behaviour but comes
+            at a significant performance cost.
 
         Returns
         -------
         pd.Series or pd.DataFrame
             Rolling minimum of values for each group, same shape as input.
         """
-        return self._apply_rolling_or_cumulative_func(
-            "rolling_min", values, window=window, mask=mask
+        return GroupBy._apply_rolling_or_cumulative_func(
+            func_name="rolling_min", **locals()
         )
 
     @groupby_method
@@ -2111,6 +2136,7 @@ class GroupBy:
         values: ArrayCollection,
         window: int,
         mask: Optional[ArrayType1D] = None,
+        index_by_groups: bool = False,
     ):
         """
         Calculate rolling maximum of values in each group.
@@ -2123,14 +2149,18 @@ class GroupBy:
             Size of the rolling window.
         mask : ArrayType1D, optional
             Boolean mask to filter values before calculation.
+        index_by_groups:
+            If True, result is multi-indexed with the outer level corresponding to the group
+            unique group key and sorted by same. This is line with the Pandas behaviour but comes
+            at a significant performance cost.
 
         Returns
         -------
         pd.Series or pd.DataFrame
             Rolling maximum of values for each group, same shape as input.
         """
-        return self._apply_rolling_or_cumulative_func(
-            "rolling_max", values, window=window, mask=mask
+        return GroupBy._apply_rolling_or_cumulative_func(
+            func_name="rolling_max", **locals()
         )
 
     @groupby_method
