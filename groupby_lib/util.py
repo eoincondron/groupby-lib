@@ -1392,3 +1392,14 @@ def argsort_index_numeric_only(index: pd.Index) -> np.ndarray | slice:
             codes_for_sorting.append(np.argsort(level.argsort())[codes])
 
     return pd.core.sorting.lexsort_indexer(codes_for_sorting)
+
+
+def check_if_func_is_non_reduce(func, *args):
+    arr_in = args[0]
+    len_1 = len(func(arr_in[:1], *args[1:]))
+    if len(arr_in) == 1:
+        len_2 = len(func(np.tile(arr_in, 2), *args[1:]))
+    else:
+        len_2 = len(func(arr_in[:2], *args[1:]))
+
+    return len_2 / len_1 == 2
