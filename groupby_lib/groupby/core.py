@@ -1486,6 +1486,163 @@ class GroupBy:
                 "agg_func must by a single function name or an iterable of same"
             )
 
+    def apply(
+        self,
+        values: ArrayCollection,
+        func: Callable,
+        mask: Optional[np.ndarray] = None,
+        *func_args,
+        **func_kwargs,
+    ) -> pd.DataFrame | pd.Series:
+        """
+        Apply a custom function to each group.
+
+        This method applies a numpy-compatible function to each group of values.
+        The function is called with each group's values and any additional arguments
+        provided. When mask is None, it uses the .groups attribute which contains a mapping
+        from group label to fancy indexer, whihc is built once and cached.
+        When mask is not None we must build the same mapping for the masked data.
+        Results are computed in parallel for better performance.
+
+        Parameters
+        ----------
+        values : ArrayCollection
+            Values to apply the function to. Can be a single array/Series or a
+            collection (list, dict) of arrays/Series.
+        func : Callable
+            Function to apply to each group. Should accept numpy arrays as input
+            and work with the signature: func(array, *func_args, **func_kwargs).
+        mask : np.ndarray, optional
+            Boolean mask array indicating which rows to include. If provided,
+            only rows where mask is True will be included in the calculation.
+            Default is None (include all rows).
+        *func_args
+            Additional positional arguments to pass to func.
+        **func_kwargs
+            Additional keyword arguments to pass to func.
+
+        Returns
+        -------
+        pd.Series | pd.DataFrame
+            Results of applying func to each group. Returns a Series if values
+            is 1D and function returns scalar, otherwise returns a DataFrame.
+            If the function returns arrays, columns are created with a MultiIndex.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from groupby_lib import GroupBy
+        >>>
+        >>> key = pd.Series([1, 1, 2, 2, 3])
+        >>> values = pd.Series([10, 20, 30, 40, 50])
+        >>> gb = GroupBy(key)
+        >>>
+        >>> # Apply custom function (e.g., range = max - min)
+        >>> gb.apply(values, lambda x: np.max(x) - np.min(x))
+        1    10
+        2    10
+        3     0
+        dtype: int64
+        """
+        value_names, value_list, type_list, common_index = self._preprocess_arguments(
+            values, mask=mask
+        )
+        indexer = self._group_sort_indexer
+        group_counts = self.ikey_count[self._labels_argsort]
+
+        splits = group_counts.cumsum()[:-1]
+
+        value_list = list(map(_val_to_numpy, value_list))
+        if mask is not None:
+            mask = np.asarray(mask)
+            if not mask.dtype.kind == "b":
+                raise TypeError("mask must be a boolean array")
+            mask_split = np.array_split(mask[indexer], splits)
+
+        def split_one_array(arr):
+            arrays = np.array_split(arr[indexer], splits)
+            if mask is not None:
+                arrays = [arr[m] for arr, m in zip(arrays, mask_split)]
+
+            return arrays
+
+        array_splits = list(map(split_one_array, value_list))
+
+        arg_list = [
+            signature(func).bind(sub_arr, *func_args, **func_kwargs).args
+            for arr_list in array_splits
+            for sub_arr in arr_list
+            if len(sub_arr)
+        ]
+
+        # TODO: allow a target vector
+        results = parallel_map(func, arg_list)
+        results_per_value = [
+            results[i * self.ngroups : (i + 1) * self.ngroups]
+            for i in range(len(value_list))
+        ]
+        result_col_names = self._col_names_from_value_names(value_names)
+
+        group_index = self._result_index[self._labels_argsort]
+        if mask is not None:
+            group_index = group_index[[len(arr) > 0 for arr in array_splits[0]]]
+        else:
+            group_index = group_index[group_counts > 0]
+
+        if np.ndim(results_per_value[0][0]) == 0:
+            # safe to assume it's a scalar value function
+            arrays = map(np.array, results_per_value)
+            index = group_index
+            could_be_non_reduce = False
+        else:
+            # if func returns a vector either the result is aligned with the input (non-reducing) or
+            # the lengths are fixed, as in quantile with more than one q value.
+            arrays = list(map(np.concatenate, results_per_value))
+            lengths = set(map(len, arrays))
+            if len(lengths) > 1:
+                raise ValueError(
+                    f"Got different lengths when applying {func} to different values"
+                )
+
+            arr_len = lengths.pop()
+
+            could_be_non_reduce = arr_len == (len(self) if mask is None else mask.sum())
+            could_be_fixed_length = arr_len % len(group_index) == 0
+            if could_be_non_reduce and could_be_fixed_length:
+                # very unlikely for large data
+                if check_if_func_is_non_reduce(func, *arg_list[0]):
+                    could_be_fixed_length = False
+                else:
+                    could_be_non_reduce = False
+
+            if not could_be_fixed_length + could_be_non_reduce == 1:
+                raise TypeError(
+                    "func must return a scalar, a vector of a fixed length or a vector aligned with its input"
+                )
+
+            if could_be_fixed_length:
+                n_per_group = arr_len // len(group_index)
+                index = expand_index_to_new_level(
+                    group_index, pd.RangeIndex(n_per_group)
+                )
+            else:
+                index = self._build_group_sorted_index(common_index)
+                if mask is not None:
+                    index = index[mask[indexer]]
+
+        series = (
+            self._convert_arr_to_series(arr, pd_type, index)
+            for arr, pd_type in zip(arrays, type_list)
+        )
+        result_df = pd.DataFrame(dict(zip(result_col_names, series)))
+
+        result = self._maybe_squeeze_to_1d(
+            result_df, values=values, n_values=len(value_list)
+        )
+
+        return result
+
     @groupby_method
     def ratio(
         self,

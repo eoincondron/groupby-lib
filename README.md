@@ -88,6 +88,7 @@ The GroupBy class supports various aggregation/selection functions:
 - `diff()` - Diff elements group-wise
 - `rolling_[min()/max()/sum()/mean()]` - rolling aggregations
 - `cum[min()/max()/count()/sum()]` - cumulative aggregations
+- `apply` - Apply any numpy compatbile function returning a scalar
 
 ### Working with Pandas Data
 
