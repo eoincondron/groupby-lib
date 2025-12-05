@@ -336,6 +336,13 @@ class GroupBy:
         return self._result_index
 
     @cached_property
+    def _labels_argsort(self):
+        if self._sort and not self._index_is_sorted:
+            return argsort_index_numeric_only(self.result_index)
+        else:
+            return slice(None)
+
+    @cached_property
     def groups(self):
         """
         Dict mapping group names to row labels.
