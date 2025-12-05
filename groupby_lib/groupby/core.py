@@ -1438,7 +1438,7 @@ class GroupBy:
                 .args
                 for f, v in zip(agg_func, value_list)
             ]
-            results = parallel_map(self.agg, args_list)
+            results = [self.agg(*args) for args in args_list]
             return pd.DataFrame(dict(zip(value_names, results)), copy=False)
         else:
             raise TypeError(
