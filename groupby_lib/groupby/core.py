@@ -117,6 +117,24 @@ def _validate_input_lengths_and_indexes(
     return indexes[0]
 
 
+def _ensure_multi_index(index: pd.Index) -> pd.MultiIndex:
+    if not isinstance(index, pd.MultiIndex):
+        codes, labels = factorize_1d(index)
+        index = pd.MultiIndex(codes=[codes], levels=[labels], names=[index.name])
+
+    return index
+
+
+def expand_index_to_new_level(index, new_level):
+    index = _ensure_multi_index(index)
+    repeated_codes = [np.repeat(codes, len(new_level)) for codes in index.codes]
+    return pd.MultiIndex(
+        codes=[*repeated_codes, np.tile(np.arange(len(new_level)), len(index))],
+        levels=[*index.levels, new_level],
+        names=[*index.names, getattr(new_level, "name", None)],
+    )
+
+
 def groupby_method(method):
 
     @wraps(method)
@@ -324,6 +342,18 @@ class GroupBy:
         return len(self.result_index)
 
     @property
+    def group_ikey(self):
+        """
+        Integer key for each original row identifying its group.
+
+        Returns
+        -------
+        ndarray
+            Array of group indices for each original row
+        """
+        return self._group_ikey
+
+    @property
     def result_index(self):
         """
         Index for the result of group-by operations.
@@ -483,6 +513,48 @@ class GroupBy:
             )
             if len(indexer) > 0
         }
+
+    def _build_group_sorted_index(self, inner_index: Optional[pd.Index] = None):
+        """
+        Build a MultiIndex that has the sorted group labels as an outer indexer.
+        To be used in conjunction with operations like .rolling_* and .ema where we
+        optionally want to sort values by group first in the same way as pandas.
+
+        Examples
+        --------
+        >>> gb = GroupBy(['a', 'b', 'b', 'a', 'c', 'b'])
+        >>> gb._build_group_sorted_index()
+        MultiIndex([('a', 0),
+                    ('a', 3),
+                    ('b', 1),
+                    ('b', 2),
+                    ('b', 5),
+                    ('c', 3)],
+                   )
+        """
+        sort = self._sort and not self._index_is_sorted
+        group_index = self.result_index
+        group_counts = self.ikey_count
+        if sort:
+            group_index = group_index[self._labels_argsort]
+            group_counts = group_counts[self._labels_argsort]
+
+        group_index = _ensure_multi_index(group_index)
+        if inner_index is None:
+            inner_index = pd.RangeIndex(len(self))
+        common_index = _ensure_multi_index(inner_index)[self._group_sort_indexer]
+
+        codes = [np.repeat(codes, group_counts) for codes in group_index.codes]
+
+        codes.extend([c for c in common_index.codes])
+        levels = [*group_index.levels, *common_index.levels]
+        index = pd.MultiIndex(
+            codes=codes,
+            levels=levels,
+            names=[*group_index.names, *common_index.names],
+        )
+
+        return index
 
     def _unify_group_key_chunks(self, keep_chunked=False):
         if self._group_key_pointers is not None and self.key_is_chunked:
