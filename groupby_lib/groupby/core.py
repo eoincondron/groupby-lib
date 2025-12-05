@@ -4,29 +4,32 @@ from functools import cached_property, wraps
 from inspect import signature
 from typing import Callable, List, Literal, Optional, Tuple, Union
 
+import numba as nb
 import numpy as np
 import pandas as pd
 import polars as pl
 import pyarrow as pa
+from numba.typed import List as NumbaList
 from pandas.core.algorithms import factorize_array
 
 from ..util import (
     ArrayType1D,
     ArrayType2D,
-    _val_to_numpy,
-    series_is_timestamp,
-    is_pyarrow_backed,
     _convert_timestamp_to_tz_unaware,
-    pandas_type_from_array,
+    _val_to_numpy,
+    argsort_index_numeric_only,
     array_split_with_chunk_handling,
     convert_data_to_arr_list_and_keys,
     get_array_name,
     is_categorical,
+    is_pyarrow_backed,
     mean_from_sum_count,
+    pandas_type_from_array,
     parallel_map,
     series_is_numeric,
+    series_is_timestamp,
     to_arrow,
-    argsort_index_numeric_only,
+    check_if_func_is_non_reduce,
 )
 from . import numba as numba_funcs
 from .factorization import (
@@ -112,6 +115,24 @@ def _validate_input_lengths_and_indexes(
             raise ValueError("Found different indices in the array_inputs")
 
     return indexes[0]
+
+
+def _ensure_multi_index(index: pd.Index) -> pd.MultiIndex:
+    if not isinstance(index, pd.MultiIndex):
+        codes, labels = factorize_1d(index)
+        index = pd.MultiIndex(codes=[codes], levels=[labels], names=[index.name])
+
+    return index
+
+
+def expand_index_to_new_level(index, new_level):
+    index = _ensure_multi_index(index)
+    repeated_codes = [np.repeat(codes, len(new_level)) for codes in index.codes]
+    return pd.MultiIndex(
+        codes=[*repeated_codes, np.tile(np.arange(len(new_level)), len(index))],
+        levels=[*index.levels, new_level],
+        names=[*index.names, getattr(new_level, "name", None)],
+    )
 
 
 def groupby_method(method):
@@ -221,6 +242,8 @@ class GroupBy:
                 *group_key_list, sort=False
             )
 
+        self.result_index.names = group_key_names
+
     @cached_property
     def _group_key_lengths(self):
         return (
@@ -319,6 +342,18 @@ class GroupBy:
         return len(self.result_index)
 
     @property
+    def group_ikey(self):
+        """
+        Integer key for each original row identifying its group.
+
+        Returns
+        -------
+        ndarray
+            Array of group indices for each original row
+        """
+        return self._group_ikey
+
+    @property
     def result_index(self):
         """
         Index for the result of group-by operations.
@@ -329,6 +364,130 @@ class GroupBy:
             Index with one level per group key
         """
         return self._result_index
+
+    @cached_property
+    def _labels_argsort(self):
+        if self._sort and not self._index_is_sorted:
+            return argsort_index_numeric_only(self.result_index)
+        else:
+            return slice(None)
+
+    def count_ikey(self, mask=None) -> np.ndarray:
+        """
+        Count of observations for each group as numpy array containing the ikey or codes.
+        Includes empty groups
+        """
+        if self.key_is_chunked:
+            group_key, first_chunk_in, mask_chunks = (
+                self._resolve_mask_argument_into_chunks(mask)
+            )
+            count = np.zeros(self.ngroups, dtype=np.int64)
+            for i, chunk in enumerate(group_key.chunks):
+                m = mask_chunks[i]
+                if self._group_key_pointers is None:
+                    count += numba_funcs.group_size(chunk, self.ngroups, mask=m)
+                else:
+                    pointer = self._group_key_pointers[first_chunk_in + i]
+                    c = numba_funcs.group_size(chunk, len(pointer), mask=m)
+                    count[pointer] += c
+            return count
+        else:
+            return numba_funcs.group_size(self.group_ikey, self.ngroups, mask=mask)
+
+    @cached_property
+    def ikey_count(self) -> np.ndarray:
+        """
+        Count of observations for each group as numpy array containing the ikey or codes.
+        Includes empty groups
+        """
+        return self.count_ikey()
+
+    @cached_property
+    def key_count(self):
+        """
+        Count of observations for each group as a Series indexed by the unique labels
+        """
+        return pd.Series(self.ikey_count, self.result_index)
+
+    @staticmethod
+    @nb.njit(nogil=True, cache=True)
+    def _build_group_sorted_indexer_numba(
+        group_key_list: NumbaList[np.ndarray],
+        group_counts: np.ndarray,
+        key_map: Optional[np.ndarray] = None,
+        mask: Optional[np.ndarray] = None,
+    ):
+        """
+        Build groups mapping efficiently in a single pass.
+
+        This function creates a mapping from group indices to arrays of row
+        positions where each group occurs. It's optimized for performance with
+        large datasets.
+
+        Parameters
+        ----------
+        group_key_list : np.ndarray
+            List of integer arrays where each element indicates group index for that row
+        group_counts : int
+            Number of elements in each unique groups
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray]
+            - group_starts: Array of starting positions for each group in indices
+            - indices: Flattened array of all row indices sorted by group
+        """
+        ngroups = len(group_counts)
+        # Calculate starting positions for each group in the output array
+        group_starts = np.zeros(ngroups + 1, dtype=np.int64)
+        for i in range(ngroups):
+            group_starts[i + 1] = group_starts[i] + group_counts[i]
+
+        # Create output array to hold all indices
+        total_valid = group_starts[ngroups]
+        indexer = np.zeros(total_valid, dtype=np.int64)
+
+        # Track current position for each group while filling
+        current_pos = group_starts[:-1].copy()
+
+        # Fill the indices array
+        i = 0
+        unmasked = mask is None
+        mapping = key_map is not None
+        for arr in group_key_list:
+            for k in arr:
+                if k >= 0 and (unmasked or mask[i]):
+                    if mapping:
+                        k = key_map[k]
+                    pos = current_pos[k]
+                    indexer[pos] = i
+                    current_pos[k] += 1
+                i += 1
+
+        return indexer
+
+    @cached_property
+    def _group_sort_indexer(self):
+        """
+        Returns an indexer which sorts the original data by groups
+
+        Examples
+        --------
+        >>> gb = GroupBy(['a', 'b', 'a', 'c'])
+        >>> gb._group_sorted_index
+        array([0, 2, 1, 3])
+        """
+        self._unify_group_key_chunks(keep_chunked=True)
+        group_counts = self.ikey_count[self._labels_argsort]
+        if isinstance(self._labels_argsort, np.ndarray):
+            key_map = self._labels_argsort.argsort()
+        else:
+            key_map = None
+        return self._build_group_sorted_indexer_numba(
+            group_key_list=_val_to_numpy(self.group_ikey, as_list=True),
+            group_counts=group_counts,
+            key_map=key_map,
+        )
 
     @cached_property
     def groups(self):
@@ -344,14 +503,61 @@ class GroupBy:
             Dictionary with group names as keys and arrays of row indices as
             values
         """
-        self._unify_group_key_chunks(keep_chunked=True)
-        return numba_funcs.build_groups_dict_optimized(
-            self.group_ikey, self.result_index, self.ngroups
+        indexer = self._group_sort_indexer
+        key_count = self.ikey_count[self._labels_argsort]
+        group_indexers = np.array_split(indexer, np.cumsum(key_count)[:-1])
+        return {
+            key: indexer
+            for key, indexer in zip(
+                self.result_index[self._labels_argsort], group_indexers
+            )
+            if len(indexer) > 0
+        }
+
+    def _build_group_sorted_index(self, inner_index: Optional[pd.Index] = None):
+        """
+        Build a MultiIndex that has the sorted group labels as an outer indexer.
+        To be used in conjunction with operations like .rolling_* and .ema where we
+        optionally want to sort values by group first in the same way as pandas.
+
+        Examples
+        --------
+        >>> gb = GroupBy(['a', 'b', 'b', 'a', 'c', 'b'])
+        >>> gb._build_group_sorted_index()
+        MultiIndex([('a', 0),
+                    ('a', 3),
+                    ('b', 1),
+                    ('b', 2),
+                    ('b', 5),
+                    ('c', 3)],
+                   )
+        """
+        sort = self._sort and not self._index_is_sorted
+        group_index = self.result_index
+        group_counts = self.ikey_count
+        if sort:
+            group_index = group_index[self._labels_argsort]
+            group_counts = group_counts[self._labels_argsort]
+
+        group_index = _ensure_multi_index(group_index)
+        if inner_index is None:
+            inner_index = pd.RangeIndex(len(self))
+        common_index = _ensure_multi_index(inner_index)[self._group_sort_indexer]
+
+        codes = [np.repeat(codes, group_counts) for codes in group_index.codes]
+
+        codes.extend([c for c in common_index.codes])
+        levels = [*group_index.levels, *common_index.levels]
+        index = pd.MultiIndex(
+            codes=codes,
+            levels=levels,
+            names=[*group_index.names, *common_index.names],
         )
 
+        return index
+
     def _unify_group_key_chunks(self, keep_chunked=False):
-        if self.key_is_chunked:
-            # Could keep it chunked here and just do the re-pointing
+        if self._group_key_pointers is not None and self.key_is_chunked:
             chunks = [
                 p[k] for p, k in zip(self._group_key_pointers, self._group_ikey.chunks)
             ]
@@ -360,18 +566,6 @@ class GroupBy:
             else:
                 self._group_ikey = np.concatenate(chunks)
             self._group_key_pointers = None
-
-    @property
-    def group_ikey(self):
-        """
-        Integer key for each original row identifying its group.
-
-        Returns
-        -------
-        ndarray
-            Array of group indices for each original row
-        """
-        return self._group_ikey
 
     @cached_property
     def has_null_keys(self) -> bool:
@@ -443,6 +637,19 @@ class GroupBy:
 
         return value_names, value_list, type_list, common_index
 
+    def _convert_arr_to_series(self, arr, pd_type, index):
+        if pd_type.kind == "M":
+            arr = arr.view(int)
+            dtype = pd_type
+        else:
+            dtype = arr.dtype
+        return pd.Series(
+            arr,
+            index,
+            dtype=dtype,
+            copy=False,
+        )
+
     def _add_margins(
         self,
         result: Union[pd.DataFrame, pd.Series],
@@ -462,6 +669,27 @@ class GroupBy:
             levels=levels,
         )
 
+    @staticmethod
+    def _col_names_from_value_names(value_names):
+        return [
+            name if name is not None else f"_arr_{i}"
+            for i, name in enumerate(value_names)
+        ]
+
+    @staticmethod
+    def _maybe_squeeze_to_1d(result, values, n_values):
+        if (
+            (n_values == 1)
+            and isinstance(values, ArrayType1D)
+            or isinstance(values, list)
+            and np.ndim(values[0]) == 0
+        ):
+            result = result.squeeze(axis=1)
+            if get_array_name(values) is None:
+                result.name = None
+
+        return result
+
     def _build_arg_dict_for_function(self, func, values, mask, **kwargs):
         value_names, value_list, type_list, common_index = self._preprocess_arguments(
             values, mask
@@ -480,7 +708,7 @@ class GroupBy:
         bound_args = [
             signature(func).bind(values=x, **shared_kwargs) for x in value_list
         ]
-        keys = (name if name else f"_arr_{i}" for i, name in enumerate(value_names))
+        keys = self._col_names_from_value_names(value_names)
         arg_dict = {key: args.args for key, args in zip(keys, bound_args)}
 
         return arg_dict, type_list, common_index
@@ -590,7 +818,7 @@ class GroupBy:
                     mask=mask_chunks[i],
                     ngroups=(
                         len(pointer) + 1
-                        if self.key_is_chunked
+                        if pointer is not None
                         else self.ngroups + 1  # +1 for null group
                     ),
                     n_threads=threads_for_one_call,
@@ -640,7 +868,7 @@ class GroupBy:
 
         return individual_results
 
-    def _apply_gb_func(
+    def _apply_gb_reduction(
         self,
         func_name: str,
         values: Optional[ArrayCollection] = None,
@@ -650,7 +878,7 @@ class GroupBy:
         observed_only: bool = True,
     ) -> Union[pd.Series, pd.DataFrame]:
         """
-        Apply a group-by function to values.
+        Apply a group-by reduction to values.
         If values is a collection or DataFrame/2-D array, applies the function to each element in parallel.
 
         Parameters
@@ -685,16 +913,6 @@ class GroupBy:
         value_names, value_list, type_list, common_index = self._preprocess_arguments(
             values, mask
         )
-        return_1d = (
-            (len(value_list) == 1)
-            and isinstance(values, ArrayType1D)
-            or isinstance(values, list)
-            and np.ndim(values[0]) == 0
-        )
-
-        result_col_names = [
-            name if name else f"_arr_{i}" for i, name in enumerate(value_names)
-        ]
 
         results = self._apply_gb_func_across_chunked_group_keys(
             effective_func_name,
@@ -705,64 +923,66 @@ class GroupBy:
         results, counts = map(list, zip(*results))
         result_len = len(self.result_index)
 
-        for i, pd_type in enumerate(type_list):
-            if pd_type.kind == "M":
-                results[i] = pd.Series(
-                    results[i][:result_len].view(int),
-                    self.result_index,
-                    dtype=pd_type,
-                    copy=False,
-                )
+        if transform:
+            self._unify_group_key_chunks()
+            results = [result[self.group_ikey] for result in results]
+            if common_index is not None:
+                result_index = common_index
+            else:
+                result_index = pd.RangeIndex(len(self))
+        else:
+            result_index = self.result_index
+
+        results = [
+            self._convert_arr_to_series(arr[: len(result_index)], pd_type, result_index)
+            for arr, pd_type in zip(results, type_list)
+        ]
+
+        result_col_names = self._col_names_from_value_names(value_names)
 
         result_df = pd.DataFrame(
-            {
-                key: result[:result_len]
-                for key, result in zip(result_col_names, results)
-            },
-            index=self.result_index,
+            dict(zip(result_col_names, results)),
             copy=False,
         )
 
+        result = self._maybe_squeeze_to_1d(result_df, values, len(value_list))
+
+        if transform:
+            return result
+
         count_df = pd.DataFrame(
             {key: count[:result_len] for key, count in zip(result_col_names, counts)},
-            index=self.result_index,
+            index=result_index,
             copy=False,
         )
 
         if func_name in ("size", "count"):
             result_df = count_df
 
-        if transform:
-            self._unify_group_key_chunks()
-            result_df = result_df.iloc[self.group_ikey]
-            if common_index is not None:
-                result_df.index = common_index
-            if return_1d:
-                return result_df.squeeze(axis=1)
-            else:
-                return result_df
+        sortkey = self._labels_argsort
 
         if observed_only:
-            observed = count_df.iloc[:, 0] > 0
+            observed = count_df.iloc[:, 0].values > 0
             if func_name != "size" and not observed.all():
                 # necessary but not sufficient condition for a group to be completely masked.
                 # count == 0 can mean a group contains only null values so here we calculate the key counts.
                 # Could optimize further by adding key count to numba functions outputs.
                 # For size, we know there are no nulls and so observed is related to key counts.
                 if mask is not None:
-                    observed = self.size(mask=mask, observed_only=False) > 0
+                    observed = self.count_ikey(mask=mask) > 0
                 else:
                     observed = self.key_count > 0
 
+            if isinstance(sortkey, np.ndarray):
+                observed = sortkey[observed[sortkey]]
+                result_df = result_df.iloc[observed]
+                count_df = count_df.iloc[observed]
+            else:
                 result_df = result_df.loc[observed]
                 count_df = count_df.loc[observed]
-
-        if (
-            self._sort and not self._index_is_sorted
-        ):  # combined result for chunked keys are already sorted
-            sort_key = argsort_index_numeric_only(result_df.index)
-            result_df = result_df.iloc[sort_key]  # type: ignore
-            count_df = count_df.iloc[sort_key]  # type: ignore
+        else:
+            result_df = result_df.iloc[sortkey]  # type: ignore
+            count_df = count_df.iloc[sortkey]  # type: ignore
 
         if margins:
             result_df = self._add_margins(
@@ -782,12 +1002,7 @@ class GroupBy:
                     }
                 )
 
-        if return_1d:
-            result_df = result_df.squeeze(axis=1)
-            if get_array_name(values) is None:
-                result_df.name = None
-
-        return result_df
+        return self._maybe_squeeze_to_1d(result_df, values, len(value_list))
 
     @groupby_method
     def size(
@@ -797,7 +1012,7 @@ class GroupBy:
         margins: bool = False,
         observed_only: bool = True,
     ):
-        return self._apply_gb_func(
+        return self._apply_gb_reduction(
             "count",
             np.empty(len(self), dtype="int8"),
             mask=mask,
@@ -805,18 +1020,6 @@ class GroupBy:
             margins=margins,
             observed_only=observed_only,
         )
-
-    @cached_property
-    def key_count(self):
-        """
-        Count of observations for each group, including empty groups.
-
-        Returns
-        -------
-        pd.Series
-            Series with group counts, including zero counts for empty groups
-        """
-        return self.size(observed_only=False)
 
     @groupby_method
     def count(
@@ -847,7 +1050,7 @@ class GroupBy:
         pd.Series or pd.DataFrame
             Count of non-null values for each group.
         """
-        return self._apply_gb_func(
+        return self._apply_gb_reduction(
             "count", values=values, mask=mask, transform=transform, margins=margins
         )
 
@@ -881,7 +1084,7 @@ class GroupBy:
         pd.Series or pd.DataFrame
             Sum of values for each group.
         """
-        return self._apply_gb_func(
+        return self._apply_gb_reduction(
             "sum",
             values=values,
             mask=mask,
@@ -919,7 +1122,7 @@ class GroupBy:
         pd.Series or pd.DataFrame
             Mean of values for each group.
         """
-        return self._apply_gb_func(
+        return self._apply_gb_reduction(
             "mean",
             values=values,
             mask=mask,
@@ -959,7 +1162,7 @@ class GroupBy:
         pd.Series or pd.DataFrame
             Minimum value for each group.
         """
-        return self._apply_gb_func(
+        return self._apply_gb_reduction(
             "min",
             values=values,
             mask=mask,
@@ -999,7 +1202,7 @@ class GroupBy:
         pd.Series or pd.DataFrame
             Maximum value for each group.
         """
-        return self._apply_gb_func(
+        return self._apply_gb_reduction(
             "max",
             values=values,
             mask=mask,
@@ -1007,58 +1210,6 @@ class GroupBy:
             margins=margins,
             observed_only=observed_only,
         )
-
-    @groupby_method
-    def median(
-        self,
-        values: ArrayCollection,
-        mask: Optional[ArrayType1D] = None,
-        transform: bool = False,
-        observed_only: bool = True,
-    ):
-        """Calculate the median of the provided values for each group.
-        Parameters
-        ----------
-        values : ArrayCollection
-            Values to calculate the median for, can be a single array/Series or a collection of them.
-        mask : Optional[ArrayType1D], default None
-            Boolean mask to filter values before calculating the median.
-        transform : bool, default False
-            If True, return values with the same shape as input rather than one value per group.
-        observed_only : bool, default True
-            If True, only include groups that are observed in the data.
-        Returns
-        -------
-        pd.Series or pd.DataFrame
-            The median of the values for each group.
-            If `transform` is True, returns a Series/DataFrame with the same shape as input.
-        """
-        value_names, value_list, type_list, common_index = self._preprocess_arguments(
-            values, mask
-        )
-
-        if mask is None:
-            mask = True
-        if self.has_null_keys:
-            mask = mask & (self.group_ikey >= 0)
-
-        if mask is True:
-            mask = slice(None)
-
-        tmp_df = pd.DataFrame(
-            {k: v[mask] for k, v in zip(value_names, value_list)}, copy=False
-        )
-        self._unify_group_key_chunks()
-        result = tmp_df.groupby(self.group_ikey[mask], observed=observed_only).median()
-        if transform:
-            result = result.reindex(self.group_ikey, copy=False)
-        else:
-            result.index = self.result_index[result.index]
-            if len(value_list) == 1 and isinstance(values, ArrayType1D):
-                result = result.iloc[:, 0]
-        if self._sort and not self._index_is_sorted:
-            result.sort_index(inplace=True)
-        return result
 
     @groupby_method
     def var(
@@ -1097,7 +1248,7 @@ class GroupBy:
         kwargs = dict(
             mask=mask, margins=margins, transform=transform, observed_only=observed_only
         )
-        sq_sum = self._apply_gb_func("sum_squares", values=values, **kwargs)
+        sq_sum = self._apply_gb_reduction("sum_squares", values=values, **kwargs)
         sum_sq = self.sum(values=values, **kwargs).astype(float) ** 2
         count = self.count(values=values, **kwargs)
         return (sq_sum - sum_sq / count) / (count - ddof)
@@ -1169,7 +1320,7 @@ class GroupBy:
         pd.Series or pd.DataFrame
             First value for each group.
         """
-        return self._apply_gb_func(
+        return self._apply_gb_reduction(
             "first",
             values=values,
             mask=mask,
@@ -1209,7 +1360,7 @@ class GroupBy:
         pd.Series or pd.DataFrame
             Last value for each group.
         """
-        return self._apply_gb_func(
+        return self._apply_gb_reduction(
             "last",
             values=values,
             mask=mask,
@@ -1287,12 +1438,242 @@ class GroupBy:
                 .args
                 for f, v in zip(agg_func, value_list)
             ]
-            results = parallel_map(self.agg, args_list)
+            results = [self.agg(*args) for args in args_list]
             return pd.DataFrame(dict(zip(value_names, results)), copy=False)
         else:
             raise TypeError(
                 "agg_func must by a single function name or an iterable of same"
             )
+
+    def apply(
+        self,
+        values: ArrayCollection,
+        func: Callable,
+        mask: Optional[np.ndarray] = None,
+        *func_args,
+        **func_kwargs,
+    ) -> pd.DataFrame | pd.Series:
+        """
+        Apply a custom function to each group.
+
+        This method applies a numpy-compatible function to each group of values.
+        The function is called with each group's values and any additional arguments
+        provided. When mask is None, it uses the .groups attribute which contains a mapping
+        from group label to fancy indexer, whihc is built once and cached.
+        When mask is not None we must build the same mapping for the masked data.
+        Results are computed in parallel for better performance.
+
+        Parameters
+        ----------
+        values : ArrayCollection
+            Values to apply the function to. Can be a single array/Series or a
+            collection (list, dict) of arrays/Series.
+        func : Callable
+            Function to apply to each group. Should accept numpy arrays as input
+            and work with the signature: func(array, *func_args, **func_kwargs).
+        mask : np.ndarray, optional
+            Boolean mask array indicating which rows to include. If provided,
+            only rows where mask is True will be included in the calculation.
+            Default is None (include all rows).
+        *func_args
+            Additional positional arguments to pass to func.
+        **func_kwargs
+            Additional keyword arguments to pass to func.
+
+        Returns
+        -------
+        pd.Series | pd.DataFrame
+            Results of applying func to each group. Returns a Series if values
+            is 1D and function returns scalar, otherwise returns a DataFrame.
+            If the function returns arrays, columns are created with a MultiIndex.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from groupby_lib import GroupBy
+        >>>
+        >>> key = pd.Series([1, 1, 2, 2, 3])
+        >>> values = pd.Series([10, 20, 30, 40, 50])
+        >>> gb = GroupBy(key)
+        >>>
+        >>> # Apply custom function (e.g., range = max - min)
+        >>> gb.apply(values, lambda x: np.max(x) - np.min(x))
+        1    10
+        2    10
+        3     0
+        dtype: int64
+        """
+        value_names, value_list, type_list, common_index = self._preprocess_arguments(
+            values, mask=mask
+        )
+        indexer = self._group_sort_indexer
+        group_counts = self.ikey_count[self._labels_argsort]
+
+        splits = group_counts.cumsum()[:-1]
+
+        value_list = list(map(_val_to_numpy, value_list))
+        if mask is not None:
+            mask = np.asarray(mask)
+            if not mask.dtype.kind == "b":
+                raise TypeError("mask must be a boolean array")
+            mask_split = np.array_split(mask[indexer], splits)
+
+        def split_one_array(arr):
+            arrays = np.array_split(arr[indexer], splits)
+            if mask is not None:
+                arrays = [arr[m] for arr, m in zip(arrays, mask_split)]
+
+            return arrays
+
+        array_splits = list(map(split_one_array, value_list))
+
+        arg_list = [
+            signature(func).bind(sub_arr, *func_args, **func_kwargs).args
+            for arr_list in array_splits
+            for sub_arr in arr_list
+            if len(sub_arr)
+        ]
+
+        # TODO: allow a target vector
+        results = parallel_map(func, arg_list)
+        results_per_value = [
+            results[i * self.ngroups : (i + 1) * self.ngroups]
+            for i in range(len(value_list))
+        ]
+        result_col_names = self._col_names_from_value_names(value_names)
+
+        group_index = self._result_index[self._labels_argsort]
+        if mask is not None:
+            group_index = group_index[[len(arr) > 0 for arr in array_splits[0]]]
+        else:
+            group_index = group_index[group_counts > 0]
+
+        if np.ndim(results_per_value[0][0]) == 0:
+            # safe to assume it's a scalar value function
+            arrays = map(np.array, results_per_value)
+            index = group_index
+            could_be_non_reduce = False
+        else:
+            # if func returns a vector either the result is aligned with the input (non-reducing) or
+            # the lengths are fixed, as in quantile with more than one q value.
+            arrays = list(map(np.concatenate, results_per_value))
+            lengths = set(map(len, arrays))
+            if len(lengths) > 1:
+                raise ValueError(
+                    f"Got different lengths when applying {func} to different values"
+                )
+
+            arr_len = lengths.pop()
+
+            could_be_non_reduce = arr_len == (len(self) if mask is None else mask.sum())
+            could_be_fixed_length = arr_len % len(group_index) == 0
+            if could_be_non_reduce and could_be_fixed_length:
+                # very unlikely for large data
+                if check_if_func_is_non_reduce(func, *arg_list[0]):
+                    could_be_fixed_length = False
+                else:
+                    could_be_non_reduce = False
+
+            if not could_be_fixed_length + could_be_non_reduce == 1:
+                raise TypeError(
+                    "func must return a scalar, a vector of a fixed length or a vector aligned with its input"
+                )
+
+            if could_be_fixed_length:
+                n_per_group = arr_len // len(group_index)
+                index = expand_index_to_new_level(
+                    group_index, pd.RangeIndex(n_per_group)
+                )
+            else:
+                index = self._build_group_sorted_index(common_index)
+                if mask is not None:
+                    index = index[mask[indexer]]
+
+        series = (
+            self._convert_arr_to_series(arr, pd_type, index)
+            for arr, pd_type in zip(arrays, type_list)
+        )
+        result_df = pd.DataFrame(dict(zip(result_col_names, series)))
+
+        result = self._maybe_squeeze_to_1d(
+            result_df, values=values, n_values=len(value_list)
+        )
+
+        return result
+
+    @groupby_method
+    def median(
+        self, values: ArrayCollection, mask: Optional[np.ndarray] = None
+    ) -> pd.Series | pd.DataFrame:
+        """Calculate the median of the provided values for each group.
+        Parameters
+        ----------
+        values : ArrayCollection
+            Values to calculate the median for, can be a single array/Series or a collection of them.
+        mask : Optional[ArrayType1D], default None
+            Boolean mask to filter values before calculating the median.
+        transform : bool, default False
+            If True, return values with the same shape as input rather than one value per group.
+        observed_only : bool, default True
+            If True, only include groups that are observed in the data.
+        Returns
+        -------
+        pd.Series or pd.DataFrame
+            The median of the values for each group.
+            If `transform` is True, returns a Series/DataFrame with the same shape as input.
+        """
+        return self.apply(values=values, mask=mask, func=np.median)
+
+    def quantile(
+        self, values: ArrayCollection, q: List[float], mask: Optional[np.ndarray] = None
+    ) -> pd.Series | pd.DataFrame:
+        """
+        Calculate quantiles of values for each group.
+
+        This method computes specified quantiles for each group using numpy's
+        percentile function. Multiple quantiles can be computed simultaneously.
+
+        Parameters
+        ----------
+        values : ArrayCollection
+            Values to calculate quantiles for. Can be a single array/Series or a
+            collection (list, dict) of arrays/Series.
+        q : List[float]
+            Quantiles to compute, must be between 0 and 1 inclusive.
+            For example, [0.25, 0.5, 0.75] computes the 25th, 50th, and 75th percentiles.
+        mask : np.ndarray, optional
+            Boolean mask array indicating which rows to include. If provided,
+            only rows where mask is True will be included in the calculation.
+            Default is None (include all rows).
+
+        Returns
+        -------
+        pd.Series | pd.DataFrame
+            Quantile values for each group. If multiple quantiles or multiple value
+            columns are provided, returns a DataFrame with a MultiIndex on columns.
+            The second level of the MultiIndex contains the quantile values.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from groupby_lib import GroupBy
+        >>>
+        >>> key = pd.Series([1, 1, 1, 2, 2, 2])
+        >>> values = pd.Series([10, 20, 30, 40, 50, 60])
+        >>> gb = GroupBy(key)
+        >>>
+        >>> # Compute median (0.5 quantile) and quartiles
+        >>> gb.quantile(values, q=[0.25, 0.5, 0.75])
+                0.25  0.50  0.75
+        1       15.0  20.0  25.0
+        2       45.0  50.0  55.0
+        """
+        result = self.apply(values=values, func=np.quantile, q=q, mask=mask)
+        if np.ndim(q) > 0:
+            result.index = result.index.set_levels(q, level=-1)
+        result.index.names = [*result.index.names[:-1], "q"]
+        return result
 
     @groupby_method
     def ratio(
@@ -1460,14 +1841,16 @@ class GroupBy:
                     names=[*self.result_index.names, None],
                 )[keep]
 
-        return_1d = isinstance(values, ArrayType1D)
+        col_names = self._col_names_from_value_names(value_names)
+
         result = (
-            pd.DataFrame(dict(zip(value_names, value_list)), copy=False)
+            pd.DataFrame(dict(zip(col_names, value_list)), copy=False)
             .iloc[ilocs]
             .set_index(out_index)
         )
-        if return_1d:
-            result = result.squeeze(axis=1)
+        result = self._maybe_squeeze_to_1d(
+            result, values=values, n_values=len(value_names)
+        )
 
         if self._sort:
             result.sort_index(inplace=True)
@@ -1602,6 +1985,7 @@ class GroupBy:
         func_name: str,
         values: ArrayCollection,
         mask: Optional[ArrayType1D] = None,
+        index_by_groups: bool = False,
         **kwargs,
     ):
         """
@@ -1615,12 +1999,25 @@ class GroupBy:
             Values to aggregate, can be a single array/Series or a collection of them.
         mask : ArrayType1D, optional
             Boolean mask to filter values before calculation.
+        index_by_groups:
+            If True, result is multi-indexed with the outer level corresponding to the group
+            unique group key and sorted by same. This is line with the Pandas behaviour but comes
+            at a significant performance cost.
 
         Returns
         -------
         pd.Series or pd.DataFrame
             Rolling aggregation results with same shape as input.
         """
+        if index_by_groups:
+            # only available for rolling function in-line with Pandas
+            func_name = func_name.replace("rolling_", "")
+            return self.apply(
+                values,
+                lambda s: pd.Series(s).rolling(**kwargs).agg(func_name),
+                mask=mask,
+            )
+
         # Get the appropriate numba function
         func = getattr(numba_funcs, func_name)
 
@@ -1636,18 +2033,18 @@ class GroupBy:
         )
         results = parallel_map(func, arg_dict.values())
 
-        out_dict = {}
-        for key, result in zip(arg_dict, results):
-            out_dict[key] = pd.Series(result, common_index)
+        result_dict = {}
+        for key, result, pd_type in zip(arg_dict, results, type_list):
+            result_dict[key] = self._convert_arr_to_series(
+                result, pd_type, common_index
+            )
 
-        return_1d = len(arg_dict) == 1 and isinstance(values, ArrayType1D)
-        out = pd.DataFrame(out_dict)
-        if return_1d:
-            out = out.squeeze(axis=1)
-            if get_array_name(values) is None:
-                out.name = None
+        result = pd.DataFrame(result_dict)
+        result = self._maybe_squeeze_to_1d(
+            result, values=values, n_values=len(arg_dict)
+        )
 
-        return out
+        return result
 
     @groupby_method
     def rolling_sum(
@@ -1655,6 +2052,7 @@ class GroupBy:
         values: ArrayCollection,
         window: int,
         mask: Optional[ArrayType1D] = None,
+        index_by_groups: bool = False,
     ):
         """
         Calculate rolling sum of values in each group.
@@ -1673,8 +2071,8 @@ class GroupBy:
         pd.Series or pd.DataFrame
             Rolling sum of values for each group, same shape as input.
         """
-        return self._apply_rolling_or_cumulative_func(
-            "rolling_sum", values, window=window, mask=mask
+        return GroupBy._apply_rolling_or_cumulative_func(
+            func_name="rolling_sum", **locals()
         )
 
     @groupby_method
@@ -1683,6 +2081,7 @@ class GroupBy:
         values: ArrayCollection,
         window: int,
         mask: Optional[ArrayType1D] = None,
+        index_by_groups: bool = False,
     ):
         """
         Calculate rolling mean of values in each group.
@@ -1695,14 +2094,18 @@ class GroupBy:
             Size of the rolling window.
         mask : ArrayType1D, optional
             Boolean mask to filter values before calculation.
+        index_by_groups:
+            If True, result is multi-indexed with the outer level corresponding to the group
+            unique group key and sorted by same. This is line with the Pandas behaviour but comes
+            at a significant performance cost.
 
         Returns
         -------
         pd.Series or pd.DataFrame
             Rolling mean of values for each group, same shape as input.
         """
-        return self._apply_rolling_or_cumulative_func(
-            "rolling_mean", values, window=window, mask=mask
+        return GroupBy._apply_rolling_or_cumulative_func(
+            func_name="rolling_mean", **locals()
         )
 
     @groupby_method
@@ -1711,6 +2114,7 @@ class GroupBy:
         values: ArrayCollection,
         window: int,
         mask: Optional[ArrayType1D] = None,
+        index_by_groups: bool = False,
     ):
         """
         Calculate rolling minimum of values in each group.
@@ -1723,14 +2127,18 @@ class GroupBy:
             Size of the rolling window.
         mask : ArrayType1D, optional
             Boolean mask to filter values before calculation.
+        index_by_groups:
+            If True, result is multi-indexed with the outer level corresponding to the group
+            unique group key and sorted by same. This is line with the Pandas behaviour but comes
+            at a significant performance cost.
 
         Returns
         -------
         pd.Series or pd.DataFrame
             Rolling minimum of values for each group, same shape as input.
         """
-        return self._apply_rolling_or_cumulative_func(
-            "rolling_min", values, window=window, mask=mask
+        return GroupBy._apply_rolling_or_cumulative_func(
+            func_name="rolling_min", **locals()
         )
 
     @groupby_method
@@ -1739,6 +2147,7 @@ class GroupBy:
         values: ArrayCollection,
         window: int,
         mask: Optional[ArrayType1D] = None,
+        index_by_groups: bool = False,
     ):
         """
         Calculate rolling maximum of values in each group.
@@ -1751,14 +2160,18 @@ class GroupBy:
             Size of the rolling window.
         mask : ArrayType1D, optional
             Boolean mask to filter values before calculation.
+        index_by_groups:
+            If True, result is multi-indexed with the outer level corresponding to the group
+            unique group key and sorted by same. This is line with the Pandas behaviour but comes
+            at a significant performance cost.
 
         Returns
         -------
         pd.Series or pd.DataFrame
             Rolling maximum of values for each group, same shape as input.
         """
-        return self._apply_rolling_or_cumulative_func(
-            "rolling_max", values, window=window, mask=mask
+        return GroupBy._apply_rolling_or_cumulative_func(
+            func_name="rolling_max", **locals()
         )
 
     @groupby_method

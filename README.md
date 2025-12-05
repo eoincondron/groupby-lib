@@ -80,14 +80,15 @@ The GroupBy class supports various aggregation/selection functions:
  - `var()/std()` - Variance/Std. Dev. of values in each group
 - `count()` - Count of non-null values in each group
 - `size()` - Total count of values in each group (including nulls)
-- `median()` - Median value in each group
-- `head()/tail()/` - The top/bottom N rows/elements in each group
+- `median()/quantile` - Median value/quantiles in each group
+- `head()/tail()` - The top/bottom N rows/elements in each group
 - `first()/last()` - The first/last non-null elements in each group
 - `nth()` - The nth row/element in each group
 - `shift()` - Shift elements group-wise
 - `diff()` - Diff elements group-wise
 - `rolling_[min()/max()/sum()/mean()]` - rolling aggregations
 - `cum[min()/max()/count()/sum()]` - cumulative aggregations
+- `apply` - Apply any numpy compatbile function returning a scalar
 
 ### Working with Pandas Data
 

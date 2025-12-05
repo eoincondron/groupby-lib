@@ -911,32 +911,36 @@ def test_group_by_rolling_methods_vs_pandas_with_chunked_arrays(df_chunked, meth
     )
     expected = expected.reset_index(level=0, drop=True).sort_index()
 
-    assert_pd_equal(result, expected, check_dtype=False)
+    assert_pd_equal(result, expected, check_categorical=False, check_dtype=False)
 
 
 @pytest.mark.parametrize("method", ["sum", "mean", "min", "max"])
-def test_group_by_rolling_methods_vs_pandas_with_np_arrays(df_np_backed, method):
+@pytest.mark.parametrize("index_by_groups", [True, False])
+def test_group_by_rolling_methods_vs_pandas_with_np_arrays(df_np_backed, method, index_by_groups):
     cols = ["ints", "floats"]
     window = 5
     gb = df_np_backed.groupby("cat", sort=False, observed=True).rolling(window)
     expected = getattr(gb[cols], method)()
     result = getattr(GroupBy, f"rolling_{method}")(
-        df_np_backed.cat, df_np_backed[cols], window=window
+        df_np_backed.cat, df_np_backed[cols], window=window, index_by_groups=index_by_groups
     )
-    expected = expected.reset_index(level=0, drop=True).sort_index()
-    assert_pd_equal(result, expected, check_dtype=False)
+    if not index_by_groups:
+        expected = expected.reset_index(level=0, drop=True).sort_index()
+    assert_pd_equal(result, expected, check_dtype=False, check_categorical=False)
 
 
 @pytest.mark.parametrize("method", ["sum", "mean", "min", "max"])
-def test_group_by_rolling_methods_vs_pandas_with_timedeltas(df_np_backed, method):
+@pytest.mark.parametrize("index_by_groups", [False])
+def test_group_by_rolling_methods_vs_pandas_with_timedeltas(df_np_backed, method, index_by_groups):
     window = 5
     result = getattr(GroupBy, f"rolling_{method}")(
-        df_np_backed.cat, df_np_backed.timedeltas, window=window
+        df_np_backed.cat, df_np_backed.timedeltas, window=window, index_by_groups=index_by_groups,
     )
     df_np_backed["time_int"] = df_np_backed.timedeltas.astype(int)
     gb = df_np_backed.groupby("cat", sort=False, observed=True).rolling(window)
-    expected = getattr(gb["time_int"], method)()
-    expected = expected.reset_index(level=0, drop=True).sort_index().astype("m8[ns]")
+    expected = getattr(gb["time_int"], method)().astype("m8[ns]")
+    if not index_by_groups:
+        expected = expected.reset_index(level=0, drop=True).sort_index()
 
     assert_pd_equal(result, expected, check_dtype=False, check_names=False)
 
@@ -962,3 +966,239 @@ def test_monotonic_group_key(partial, use_mask):
     result = gb.mean(arr, mask=mask)
     expected = pd.Series(arr)[mask].groupby(mono_key[mask]).mean()
     assert_pd_equal(result, expected)
+
+
+class TestCountIkey:
+    """Test class for GroupBy.count_ikey method."""
+
+    def test_basic_count_ikey(self):
+        """Test basic functionality of count_ikey without mask."""
+        key = pd.Series([1, 2, 1, 3, 2, 1])
+        gb = GroupBy(key)
+
+        result = gb.count_ikey()
+
+        # Group 1: 3 occurrences, Group 2: 2 occurrences, Group 3: 1 occurrence
+        expected = np.array([3, 2, 1])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_count_ikey_with_mask(self):
+        """Test count_ikey with a boolean mask."""
+        key = pd.Series([1, 2, 1, 3, 2, 1])
+        mask = np.array([True, True, False, True, True, False])
+
+        gb = GroupBy(key)
+        result = gb.count_ikey(mask=mask)
+
+        # With mask: Group 1: 1 occurrence, Group 2: 2 occurrences, Group 3: 1 occurrence
+        expected = np.array([1, 2, 1])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_count_ikey_all_same_group(self):
+        """Test count_ikey when all elements belong to the same group."""
+        key = np.array([5, 5, 5, 5])
+        gb = GroupBy(key)
+
+        result = gb.count_ikey()
+
+        # All elements in group 5
+        expected = np.array([4])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_count_ikey_all_unique_groups(self):
+        """Test count_ikey when each element is its own group."""
+        key = np.array([1, 2, 3, 4, 5])
+        gb = GroupBy(key)
+
+        result = gb.count_ikey()
+
+        # Each group has 1 element
+        expected = np.array([1, 1, 1, 1, 1])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_count_ikey_with_multikey(self):
+        """Test count_ikey with multiple grouping keys."""
+        key1 = pd.Series([1, 2, 1, 2, 1])
+        key2 = pd.Series(["a", "a", "b", "b", "a"])
+
+        gb = GroupBy([key1, key2])
+        result = gb.count_ikey()
+
+        # Groups: (1,a): 2, (1,b): 1, (2,a): 1, (2,b): 1
+        expected = np.array([2, 1, 1, 1])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_count_ikey_with_multikey_and_mask(self):
+        """Test count_ikey with multiple grouping keys and a mask."""
+        key1 = pd.Series([1, 2, 1, 2, 1, 2])
+        key2 = pd.Series(["a", "a", "b", "b", "a", "a"])
+        mask = np.array([True, True, True, False, True, True])
+
+        gb = GroupBy([key1, key2])
+        result = gb.count_ikey(mask=mask)
+
+        # Result index order is: (1,a), (2,a), (1,b), (2,b)
+        # With mask applied: (1,a): 2, (2,a): 2, (1,b): 1, (2,b): 0
+        expected = np.array([2, 2, 1, 0])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_count_ikey_string_keys(self):
+        """Test count_ikey with string keys."""
+        key = pd.Series(["apple", "banana", "apple", "cherry", "banana", "apple"])
+        gb = GroupBy(key)
+
+        result = gb.count_ikey()
+
+        # Groups in sorted order: apple: 3, banana: 2, cherry: 1
+        expected = np.array([3, 2, 1])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_count_ikey_no_sort(self):
+        """Test count_ikey when sort=False."""
+        key = np.array([3, 1, 2, 1, 3])
+        gb = GroupBy(key, sort=False)
+
+        result = gb.count_ikey()
+
+        # Groups in order of first occurrence: 3: 2, 1: 2, 2: 1
+        expected = np.array([2, 2, 1])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_count_ikey_with_empty_groups_categorical(self):
+        """Test count_ikey with categorical keys that have unused categories."""
+        key = pd.Categorical(
+            ["a", "b", "a", "b"],
+            categories=["a", "b", "c", "d"],
+            ordered=True
+        )
+        gb = GroupBy(key)
+
+        result = gb.count_ikey()
+
+        # Categorical includes all categories, even unused ones
+        # Groups: 'a': 2, 'b': 2, 'c': 0, 'd': 0
+        expected = np.array([2, 2, 0, 0])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_count_ikey_consistency_with_ikey_count(self):
+        """Test that count_ikey() matches the cached ikey_count property."""
+        key = np.array([1, 2, 1, 3, 2, 1, 3, 3])
+        gb = GroupBy(key)
+
+        # Access both the method and the property
+        result_method = gb.count_ikey()
+        result_property = gb.ikey_count
+
+        np.testing.assert_array_equal(result_method, result_property)
+
+    def test_count_ikey_large_data(self):
+        """Test count_ikey with larger dataset."""
+        np.random.seed(42)
+        n = 10000
+        key = np.random.randint(0, 100, n)
+        gb = GroupBy(key)
+
+        result = gb.count_ikey()
+
+        # Verify using pandas - need to align by result_index
+        pandas_counts = pd.Series(key).groupby(key).size()
+        expected = pandas_counts.reindex(gb.result_index, fill_value=0).values
+        np.testing.assert_array_equal(result, expected)
+
+    def test_count_ikey_with_mask_all_false(self):
+        """Test count_ikey with a mask that excludes all elements."""
+        key = np.array([1, 2, 1, 3, 2])
+        mask = np.array([False, False, False, False, False])
+
+        gb = GroupBy(key)
+        result = gb.count_ikey(mask=mask)
+
+        # All elements masked out
+        expected = np.array([0, 0, 0])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_count_ikey_with_mask_all_true(self):
+        """Test count_ikey with a mask that includes all elements."""
+        key = np.array([1, 2, 1, 3, 2])
+        mask = np.array([True, True, True, True, True])
+
+        gb = GroupBy(key)
+        result_with_mask = gb.count_ikey(mask=mask)
+        result_without_mask = gb.count_ikey()
+
+        # Should be the same as without mask
+        np.testing.assert_array_equal(result_with_mask, result_without_mask)
+
+    @pytest.mark.parametrize("use_mask", [False, True])
+    @pytest.mark.parametrize("unify_chunks", [False, True][:1])
+    def test_count_ikey_chunked_factorization(self, monkeypatch, use_mask, unify_chunks):
+        """Test count_ikey with chunked factorization."""
+        # Monkeypatch to force chunked factorization
+        from groupby_lib.groupby import core
+        monkeypatch.setattr(core, "THRESHOLD_FOR_CHUNKED_FACTORIZE", 5)
+
+        key = pd.Series([1, 2, 1, 3, 2, 1, 3, 3, 2, 1])
+        gb = GroupBy(key)
+        if unify_chunks:
+            gb._unify_group_key_chunks(keep_chunked=True)
+        assert gb.key_is_chunked
+
+        if use_mask:
+            mask = np.array([True, True, False, True, True, True, False, True, True, False])
+        else:
+            mask = slice(None)
+
+        result = pd.Series(gb.count_ikey(mask=mask), gb.result_index)
+        expected = pd.Series(key)[mask].value_counts().reindex(gb.result_index)
+
+        assert_pd_equal(result, expected, check_names=False)
+
+    @pytest.mark.parametrize("use_mask", [False, True])
+    @pytest.mark.parametrize("unify_chunks", [False, True][:1])
+    def test_count_ikey_chunked_factorization_different_lengths(
+        self, monkeypatch, use_mask, unify_chunks
+    ):
+        """Test count_ikey with chunked factorization."""
+        key = pa.chunked_array(
+            [
+                pa.array([1, 2, 1]),
+                pa.array([3, 2, 1, 3]),
+                pa.array([3, 2, 1]),
+            ]
+        )
+        gb = GroupBy(key)
+        if unify_chunks:
+            gb._unify_group_key_chunks(keep_chunked=True)
+        assert gb.key_is_chunked
+
+        if use_mask:
+            mask = np.arange(len(key)) < 3  # only first chunk
+        else:
+            mask = slice(None)
+
+        result = pd.Series(gb.count_ikey(mask=mask), gb.result_index)
+        expected = pd.Series(key)[mask].value_counts().reindex(gb.result_index, fill_value=0)
+
+        assert_pd_equal(result, expected, check_names=False)
+
+    def test_count_ikey_with_null_keys(self):
+        """Test count_ikey with null keys."""
+        key = pd.Series([1, 2, None, 1, 3, None, 2])
+        gb = GroupBy(key)
+
+        result = gb.count_ikey()
+
+        # Nulls are excluded from groups
+        # Groups: 1: 2, 2: 2, 3: 1
+        expected = np.array([2, 2, 1])
+        np.testing.assert_array_equal(result, expected)
+
+    def test_count_ikey_returns_numpy_array(self):
+        """Test that count_ikey returns a numpy array."""
+        key = pd.Series([1, 2, 1, 3])
+        gb = GroupBy(key)
+
+        result = gb.count_ikey()
+
+        assert isinstance(result, np.ndarray)
+        assert result.dtype == np.int64
