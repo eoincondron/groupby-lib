@@ -923,55 +923,66 @@ class GroupBy:
         results, counts = map(list, zip(*results))
         result_len = len(self.result_index)
 
+        if transform:
+            self._unify_group_key_chunks()
+            results = [result[self.group_ikey] for result in results]
+            if common_index is not None:
+                result_index = common_index
+            else:
+                result_index = pd.RangeIndex(len(self))
+        else:
+            result_index = self.result_index
+
         results = [
-            self._convert_arr_to_series(arr[:result_len], pd_type, self.result_index)
+            self._convert_arr_to_series(arr[: len(result_index)], pd_type, result_index)
             for arr, pd_type in zip(results, type_list)
         ]
 
         result_col_names = self._col_names_from_value_names(value_names)
+
         result_df = pd.DataFrame(
             dict(zip(result_col_names, results)),
             copy=False,
         )
 
+        result = self._maybe_squeeze_to_1d(result_df, values, len(value_list))
+
+        if transform:
+            return result
+
         count_df = pd.DataFrame(
             {key: count[:result_len] for key, count in zip(result_col_names, counts)},
-            index=self.result_index,
+            index=result_index,
             copy=False,
         )
 
         if func_name in ("size", "count"):
             result_df = count_df
 
-        if transform:
-            result = self._maybe_squeeze_to_1d(result_df, values, len(value_list))
-            self._unify_group_key_chunks()
-            result = result.iloc[self.group_ikey]
-            if common_index is not None:
-                result.index = common_index
-            return result
+        sortkey = self._labels_argsort
 
         if observed_only:
-            observed = count_df.iloc[:, 0] > 0
+            observed = count_df.iloc[:, 0].values > 0
             if func_name != "size" and not observed.all():
                 # necessary but not sufficient condition for a group to be completely masked.
                 # count == 0 can mean a group contains only null values so here we calculate the key counts.
                 # Could optimize further by adding key count to numba functions outputs.
                 # For size, we know there are no nulls and so observed is related to key counts.
                 if mask is not None:
-                    observed = self.size(mask=mask, observed_only=False) > 0
+                    observed = self.count_ikey(mask=mask) > 0
                 else:
                     observed = self.key_count > 0
 
+            if isinstance(sortkey, np.ndarray):
+                observed = sortkey[observed[sortkey]]
+                result_df = result_df.iloc[observed]
+                count_df = count_df.iloc[observed]
+            else:
                 result_df = result_df.loc[observed]
                 count_df = count_df.loc[observed]
-
-        if (
-            self._sort and not self._index_is_sorted
-        ):  # combined result for chunked keys are already sorted
-            sort_key = argsort_index_numeric_only(result_df.index)
-            result_df = result_df.iloc[sort_key]  # type: ignore
-            count_df = count_df.iloc[sort_key]  # type: ignore
+        else:
+            result_df = result_df.iloc[sortkey]  # type: ignore
+            count_df = count_df.iloc[sortkey]  # type: ignore
 
         if margins:
             result_df = self._add_margins(
