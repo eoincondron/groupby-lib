@@ -8,11 +8,11 @@ import pyarrow as pa
 
 from groupby_lib.util import (
     ArrayType1D,
-    pandas_type_from_array,
-    is_pyarrow_backed,
     _convert_timestamp_to_tz_unaware,
     _val_to_numpy,
     get_array_name,
+    is_pyarrow_backed,
+    pandas_type_from_array,
     parallel_map,
 )
 

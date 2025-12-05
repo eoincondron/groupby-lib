@@ -4,29 +4,32 @@ from functools import cached_property, wraps
 from inspect import signature
 from typing import Callable, List, Literal, Optional, Tuple, Union
 
+import numba as nb
 import numpy as np
 import pandas as pd
 import polars as pl
 import pyarrow as pa
+from numba.typed import List as NumbaList
 from pandas.core.algorithms import factorize_array
 
 from ..util import (
     ArrayType1D,
     ArrayType2D,
-    _val_to_numpy,
-    series_is_timestamp,
-    is_pyarrow_backed,
     _convert_timestamp_to_tz_unaware,
-    pandas_type_from_array,
+    _val_to_numpy,
+    argsort_index_numeric_only,
     array_split_with_chunk_handling,
     convert_data_to_arr_list_and_keys,
     get_array_name,
     is_categorical,
+    is_pyarrow_backed,
     mean_from_sum_count,
+    pandas_type_from_array,
     parallel_map,
     series_is_numeric,
+    series_is_timestamp,
     to_arrow,
-    argsort_index_numeric_only,
+    check_if_func_is_non_reduce,
 )
 from . import numba as numba_funcs
 from .factorization import (
