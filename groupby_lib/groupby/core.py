@@ -473,10 +473,16 @@ class GroupBy:
             Dictionary with group names as keys and arrays of row indices as
             values
         """
-        self._unify_group_key_chunks(keep_chunked=True)
-        return numba_funcs.build_groups_dict_optimized(
-            self.group_ikey, self.result_index, self.ngroups
-        )
+        indexer = self._group_sort_indexer
+        key_count = self.ikey_count[self._labels_argsort]
+        group_indexers = np.array_split(indexer, np.cumsum(key_count)[:-1])
+        return {
+            key: indexer
+            for key, indexer in zip(
+                self.result_index[self._labels_argsort], group_indexers
+            )
+            if len(indexer) > 0
+        }
 
     def _unify_group_key_chunks(self, keep_chunked=False):
         if self._group_key_pointers is not None and self.key_is_chunked:
