@@ -379,6 +379,86 @@ class GroupBy:
         """
         return pd.Series(self.ikey_count, self.result_index)
 
+    @staticmethod
+    @nb.njit(nogil=True, cache=True)
+    def _build_group_sorted_indexer_numba(
+        group_key_list: NumbaList[np.ndarray],
+        group_counts: np.ndarray,
+        key_map: Optional[np.ndarray] = None,
+        mask: Optional[np.ndarray] = None,
+    ):
+        """
+        Build groups mapping efficiently in a single pass.
+
+        This function creates a mapping from group indices to arrays of row
+        positions where each group occurs. It's optimized for performance with
+        large datasets.
+
+        Parameters
+        ----------
+        group_key_list : np.ndarray
+            List of integer arrays where each element indicates group index for that row
+        group_counts : int
+            Number of elements in each unique groups
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray]
+            - group_starts: Array of starting positions for each group in indices
+            - indices: Flattened array of all row indices sorted by group
+        """
+        ngroups = len(group_counts)
+        # Calculate starting positions for each group in the output array
+        group_starts = np.zeros(ngroups + 1, dtype=np.int64)
+        for i in range(ngroups):
+            group_starts[i + 1] = group_starts[i] + group_counts[i]
+
+        # Create output array to hold all indices
+        total_valid = group_starts[ngroups]
+        indexer = np.zeros(total_valid, dtype=np.int64)
+
+        # Track current position for each group while filling
+        current_pos = group_starts[:-1].copy()
+
+        # Fill the indices array
+        i = 0
+        unmasked = mask is None
+        mapping = key_map is not None
+        for arr in group_key_list:
+            for k in arr:
+                if k >= 0 and (unmasked or mask[i]):
+                    if mapping:
+                        k = key_map[k]
+                    pos = current_pos[k]
+                    indexer[pos] = i
+                    current_pos[k] += 1
+                i += 1
+
+        return indexer
+
+    @cached_property
+    def _group_sort_indexer(self):
+        """
+        Returns an indexer which sorts the original data by groups
+
+        Examples
+        --------
+        >>> gb = GroupBy(['a', 'b', 'a', 'c'])
+        >>> gb._group_sorted_index
+        array([0, 2, 1, 3])
+        """
+        self._unify_group_key_chunks(keep_chunked=True)
+        group_counts = self.ikey_count[self._labels_argsort]
+        if isinstance(self._labels_argsort, np.ndarray):
+            key_map = self._labels_argsort.argsort()
+        else:
+            key_map = None
+        return self._build_group_sorted_indexer_numba(
+            group_key_list=_val_to_numpy(self.group_ikey, as_list=True),
+            group_counts=group_counts,
+            key_map=key_map,
+        )
+
     @cached_property
     def groups(self):
         """
@@ -399,8 +479,7 @@ class GroupBy:
         )
 
     def _unify_group_key_chunks(self, keep_chunked=False):
-        if self.key_is_chunked:
-            # Could keep it chunked here and just do the re-pointing
+        if self._group_key_pointers is not None and self.key_is_chunked:
             chunks = [
                 p[k] for p, k in zip(self._group_key_pointers, self._group_ikey.chunks)
             ]
