@@ -342,6 +342,43 @@ class GroupBy:
         else:
             return slice(None)
 
+    def count_ikey(self, mask=None) -> np.ndarray:
+        """
+        Count of observations for each group as numpy array containing the ikey or codes.
+        Includes empty groups
+        """
+        if self.key_is_chunked:
+            group_key, first_chunk_in, mask_chunks = (
+                self._resolve_mask_argument_into_chunks(mask)
+            )
+            count = np.zeros(self.ngroups, dtype=np.int64)
+            for i, chunk in enumerate(group_key.chunks):
+                m = mask_chunks[i]
+                if self._group_key_pointers is None:
+                    count += numba_funcs.group_size(chunk, self.ngroups, mask=m)
+                else:
+                    pointer = self._group_key_pointers[first_chunk_in + i]
+                    c = numba_funcs.group_size(chunk, len(pointer), mask=m)
+                    count[pointer] += c
+            return count
+        else:
+            return numba_funcs.group_size(self.group_ikey, self.ngroups, mask=mask)
+
+    @cached_property
+    def ikey_count(self) -> np.ndarray:
+        """
+        Count of observations for each group as numpy array containing the ikey or codes.
+        Includes empty groups
+        """
+        return self.count_ikey()
+
+    @cached_property
+    def key_count(self):
+        """
+        Count of observations for each group as a Series indexed by the unique labels
+        """
+        return pd.Series(self.ikey_count, self.result_index)
+
     @cached_property
     def groups(self):
         """
@@ -372,18 +409,6 @@ class GroupBy:
             else:
                 self._group_ikey = np.concatenate(chunks)
             self._group_key_pointers = None
-
-    @property
-    def group_ikey(self):
-        """
-        Integer key for each original row identifying its group.
-
-        Returns
-        -------
-        ndarray
-            Array of group indices for each original row
-        """
-        return self._group_ikey
 
     @cached_property
     def has_null_keys(self) -> bool:
@@ -636,7 +661,7 @@ class GroupBy:
                     mask=mask_chunks[i],
                     ngroups=(
                         len(pointer) + 1
-                        if self.key_is_chunked
+                        if pointer is not None
                         else self.ngroups + 1  # +1 for null group
                     ),
                     n_threads=threads_for_one_call,
@@ -827,18 +852,6 @@ class GroupBy:
             margins=margins,
             observed_only=observed_only,
         )
-
-    @cached_property
-    def key_count(self):
-        """
-        Count of observations for each group, including empty groups.
-
-        Returns
-        -------
-        pd.Series
-            Series with group counts, including zero counts for empty groups
-        """
-        return self.size(observed_only=False)
 
     @groupby_method
     def count(
