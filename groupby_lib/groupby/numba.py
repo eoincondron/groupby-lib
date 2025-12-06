@@ -162,7 +162,7 @@ def _chunk_args_for_unchunked_values(
 # ===== Row Selection Methods =====
 
 
-@nb.njit
+@nb.njit(cache=True)
 def _find_nth(
     group_key: np.ndarray,
     ngroups: np.ndarray,
@@ -192,7 +192,7 @@ def _find_nth(
     return out
 
 
-@nb.njit
+@nb.njit(cache=True)
 def _find_first_or_last_n(
     group_key: np.ndarray,
     ngroups: np.ndarray,
@@ -385,7 +385,7 @@ class ScalarFuncs:
             return next_val, count + 1
 
 
-@nb.njit(nogil=True)
+@nb.njit(nogil=True, cache=True)
 def _group_by_reduce(
     group_key: np.ndarray,
     values: np.ndarray,
@@ -532,7 +532,7 @@ def _apply_group_method_single_chunk(
     )
 
 
-@nb.njit(parallel=True)
+@nb.njit(parallel=True, cache=True)
 def reduce_array_pair(
     x: np.ndarray, y: np.ndarray, reducer: Callable, counts: Optional[np.ndarray] = None
 ):
@@ -1019,7 +1019,7 @@ def _wrap_numba(nb_func):
 
 @check_data_inputs_aligned("group_key", "values")
 @_wrap_numba
-@nb.njit
+@nb.njit(cache=True)
 def group_nearby_members(
     group_key: np.ndarray, values: np.ndarray, max_diff: float | int, n_groups: int
 ):
@@ -1154,7 +1154,7 @@ def _apply_rolling(
     return result
 
 
-@nb.njit(nogil=True, fastmath=False)
+@nb.njit(nogil=True, fastmath=False, cache=True)
 def _rolling_sum_or_mean_1d(
     group_key: np.ndarray,
     values: np.ndarray,
@@ -1351,7 +1351,7 @@ def rolling_mean(
     return _apply_rolling("mean", want_mean=True, **locals())
 
 
-@nb.njit(nogil=True)
+@nb.njit(nogil=True, cache=True)
 def min_or_max_and_position(arr, want_max: bool = True):
     i = 0
     while is_null(arr[i]) and i < len(arr) - 1:
@@ -1366,7 +1366,7 @@ def min_or_max_and_position(arr, want_max: bool = True):
     return best, best_pos
 
 
-@nb.njit(nogil=True, fastmath=False)
+@nb.njit(nogil=True, fastmath=False, cache=True)
 def _rolling_max_or_min_1d(
     group_key: np.ndarray,
     values: np.ndarray,
@@ -1529,7 +1529,7 @@ def rolling_max(
     return _apply_rolling("max", want_max=True, **locals())
 
 
-@nb.njit(nogil=True, fastmath=False)
+@nb.njit(nogil=True, fastmath=False, cache=True)
 def _rolling_shift_or_diff_1d(
     group_key: np.ndarray,
     values: np.ndarray,
@@ -1609,7 +1609,7 @@ def rolling_diff(
 # ================================
 
 
-@nb.njit(nogil=True, fastmath=False)
+@nb.njit(nogil=True, fastmath=False, cache=True)
 def _cumulative_reduce(
     group_key: np.ndarray,
     values: np.ndarray,
