@@ -7,14 +7,15 @@ import pandas as pd
 from .util import check_data_inputs_aligned
 
 
+_COMMON_VALUE_TYPES = [
+    nb.types.Array(dtype, 1, "A", readonly=readonly)
+    for dtype in [nb.types.float32, nb.types.int32, nb.types.float64, nb.types.int64]
+    for readonly in (False, True)
+]
+
+
 _EMA_SIGNATURES = [
-    nb.types.float64[:](arr_type, nb.types.float64)
-    for arr_type in (
-        nb.types.float32[:],
-        nb.types.float64[:],
-        nb.types.int64[:],
-        nb.types.int32[:],
-    )
+    nb.types.float64[:](arr_type, nb.types.float64) for arr_type in _COMMON_VALUE_TYPES
 ]
 
 
@@ -172,9 +173,9 @@ def _ema_time_weighted(arr: np.ndarray, times: np.ndarray, halflife: int) -> np.
     return out
 
 
-_ema_adjusted._can_cache = True
-_ema_unadjusted._can_cache = True
-_ema_time_weighted._can_cache = True
+_ema_adjusted._can_compile = True
+_ema_unadjusted._can_compile = True
+_ema_time_weighted._can_compile = True
 
 
 def _halflife_to_int(halflife):
@@ -278,6 +279,12 @@ def ema(
     return _maybe_to_series(ema)
 
 
+_KEY_TYPES = [
+    nb.types.Array(int_type, 1, "A", readonly=readonly)
+    for int_type in [nb.types.int8, nb.types.int16, nb.types.int32, nb.types.int64]
+    for readonly in (False, True)
+]
+
 _EMA_SIGNATURES_GROUPED = [
     nb.types.float64[:](
         key_type,
@@ -286,18 +293,8 @@ _EMA_SIGNATURES_GROUPED = [
         nb.types.int64,
         nb.types.optional(nb.types.bool[:]),
     )
-    for key_type in (
-        nb.types.int8[:],
-        nb.types.int16[:],
-        nb.types.int32[:],
-        nb.types.int64[:],
-    )
-    for arr_type in (
-        nb.types.float32[:],
-        nb.types.float64[:],
-        nb.types.int64[:],
-        nb.types.int32[:],
-    )
+    for key_type in _KEY_TYPES
+    for arr_type in _COMMON_VALUE_TYPES
 ]
 
 
@@ -379,18 +376,8 @@ _EMA_SIGNATURES_GROUPED_TIMED = [
         nb.types.int64,
         nb.types.optional(nb.types.bool[:]),
     )
-    for key_type in (
-        nb.types.int8[:],
-        nb.types.int16[:],
-        nb.types.int32[:],
-        nb.types.int64[:],
-    )
-    for arr_type in (
-        nb.types.float32[:],
-        nb.types.float64[:],
-        nb.types.int64[:],
-        nb.types.int32[:],
-    )
+    for key_type in _KEY_TYPES
+    for arr_type in _COMMON_VALUE_TYPES
 ]
 
 
