@@ -41,7 +41,7 @@ def factorize_arrow_arr(
     return codes, labels
 
 
-@nb.njit
+@nb.njit(cache=True)
 def _monotonic_factorization(arr_list, total_len):
     codes = np.empty(total_len, dtype=np.uint32)
     labels = np.empty(total_len, dtype=arr_list[0].dtype)
@@ -299,7 +299,7 @@ def factorize_1d(
         return codes, pd.Index(uniques, name=values.name)
 
 
-@nb.njit
+@nb.njit(cache=True)
 def _weight_code_sum(codes: np.ndarray, weights: np.ndarray) -> int:
     """
     Numpy's dot product does not work within the scope below.
@@ -313,7 +313,7 @@ def _weight_code_sum(codes: np.ndarray, weights: np.ndarray) -> int:
     return out + codes[-1]
 
 
-@nb.njit
+@nb.njit(cache=True)
 def _combine_factorizations(
     codes: np.ndarray,
     code_weights: np.ndarray,

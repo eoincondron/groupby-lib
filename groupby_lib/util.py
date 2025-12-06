@@ -85,7 +85,7 @@ def jit_is_null(x):
         return is_null
 
 
-@nb.njit(parallel=True)
+@nb.njit(parallel=True, cache=True)
 def arr_is_null(arr):
     out = np.zeros(len(arr), dtype=nb.bool_)
     for i in nb.prange(len(arr)):
@@ -477,7 +477,7 @@ def jit_get_first_non_null(arr):
 
 
 def _scalar_func_decorator(func):
-    return staticmethod(nb.njit(nogil=True)(func))
+    return staticmethod(nb.njit(nogil=True, cache=True)(func))
 
 
 class NumbaReductionOps:
@@ -1200,7 +1200,7 @@ def pretty_cut(x: ArrayType1D, bins: ArrayType1D | List, precision: int = None):
     return out
 
 
-@nb.njit(parallel=True)
+@nb.njit(parallel=True, cache=True)
 def _nb_dot(a: List[np.ndarray], b: np.ndarray, out: np.ndarray) -> np.ndarray:
     for row in nb.prange(len(a[0])):
         for col in nb.prange(len(b)):

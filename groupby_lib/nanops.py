@@ -15,7 +15,7 @@ from .util import (
 )
 
 
-@nb.njit(nogil=True)
+@nb.njit(nogil=True, cache=True)
 def _nb_reduce(reduce_func, arr, skipna: bool = True, initial_value=None):
     """
     Apply a reduction function to an array, with NA/null handling.
