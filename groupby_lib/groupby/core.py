@@ -125,7 +125,23 @@ def _ensure_multi_index(index: pd.Index) -> pd.MultiIndex:
     return index
 
 
-def expand_index_to_new_level(index, new_level):
+def expand_index_to_new_level(index: pd.Index, new_level: pd.Index) -> pd.MultiIndex:
+    """
+    Expand a pandas Index to include a new level, taking the cartesian product. 
+
+    Examples
+    --------
+    >>> index = pd.Index(['a', 'b'])
+    >>> new_level = pd.Index([1, 2, 3])
+    >>> expand_index_to_new_level(index, new_level)
+    MultiIndex([('a', 1),
+                ('a', 2),
+                ('a', 3),
+                ('b', 1),
+                ('b', 2),
+                ('b', 3)],
+               )
+    """
     index = _ensure_multi_index(index)
     repeated_codes = [np.repeat(codes, len(new_level)) for codes in index.codes]
     return pd.MultiIndex(
