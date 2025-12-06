@@ -486,6 +486,90 @@ class TestGroupByIntegration:
             pd.testing.assert_frame_equal(sub, self.df.loc[self.groups == k])
 
 
+class TestEMA:
+    """Test EMA functionality."""
+
+    def test_series_ema_with_alpha(self):
+        """Test basic Series EMA with alpha parameter."""
+        data = pd.Series([1.0, 2.0, 3.0, 10.0, 20.0, 30.0])
+        groups = pd.Series([1, 1, 1, 2, 2, 2])
+
+        gb = SeriesGroupBy(data, by=groups)
+        result = gb.ema(alpha=0.5)
+
+        # Check basic properties
+        assert isinstance(result, pd.Series)
+        assert len(result) == len(data)
+        assert not result.isna().any()
+
+        # Check that groups are independent
+        # Group 1 values should differ from Group 2 values
+        group1_result = result.iloc[:3]
+        group2_result = result.iloc[3:]
+        assert group1_result.iloc[0] == 1.0  # First value unchanged
+        assert group2_result.iloc[0] == 10.0  # First value unchanged
+
+    def test_series_ema_with_halflife(self):
+        """Test Series EMA with halflife parameter."""
+        data = pd.Series([1.0, 2.0, 3.0, 4.0])
+        groups = pd.Series(["A", "A", "B", "B"])
+
+        gb = SeriesGroupBy(data, by=groups)
+        result = gb.ema(halflife=2.0)
+
+        assert isinstance(result, pd.Series)
+        assert len(result) == len(data)
+        assert not result.isna().any()
+
+    def test_series_ema_with_time_weights(self):
+        """Test Series EMA with time-weighted calculation."""
+        data = pd.Series([1.0, 2.0, 3.0, 10.0, 20.0, 30.0])
+        groups = pd.Series([1, 1, 1, 2, 2, 2])
+        times = pd.date_range("2024-01-01", periods=6, freq="1h")
+
+        gb = SeriesGroupBy(data, by=groups)
+        result = gb.ema(halflife="2h", times=times)
+
+        assert isinstance(result, pd.Series)
+        assert len(result) == len(data)
+        assert not result.isna().any()
+
+    def test_series_ema_with_mask(self):
+        """Test Series EMA with mask parameter."""
+        data = pd.Series([1.0, 2.0, 3.0, 10.0, 20.0, 30.0])
+        groups = pd.Series([1, 1, 1, 2, 2, 2])
+        mask = np.array([True, True, False, True, True, True])
+
+        gb = SeriesGroupBy(data, by=groups)
+        result = gb.ema(alpha=0.5, mask=mask)
+
+        assert isinstance(result, pd.Series)
+        assert len(result) == len(data)
+
+    def test_dataframe_ema(self):
+        """Test DataFrame EMA functionality."""
+        df = pd.DataFrame({"A": [1.0, 2.0, 3.0, 4.0], "B": [10.0, 20.0, 30.0, 40.0]})
+        groups = pd.Series([1, 1, 2, 2])
+
+        gb = DataFrameGroupBy(df, by=groups)
+        result = gb.ema(alpha=0.5)
+
+        assert isinstance(result, pd.DataFrame)
+        assert result.shape == df.shape
+        assert not result.isna().any().any()
+
+    def test_dataframe_single_column_ema(self):
+        """Test EMA on single column selection from DataFrame."""
+        df = pd.DataFrame({"A": [1.0, 2.0, 3.0, 4.0], "B": [10.0, 20.0, 30.0, 40.0]})
+        groups = pd.Series([1, 1, 2, 2])
+
+        gb = DataFrameGroupBy(df, by=groups)
+        result = gb["A"].ema(alpha=0.5)
+
+        assert isinstance(result, pd.Series)
+        assert len(result) == len(df)
+
+
 class TestEdgeCases:
     """Test edge cases and error conditions."""
 
