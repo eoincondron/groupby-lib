@@ -19,7 +19,7 @@ _EMA_SIGNATURES = [
 ]
 
 
-@nb.njit(_EMA_SIGNATURES, nogil=True, cache=True)
+@nb.njit(nogil=True, cache=True)
 def _ema_adjusted(arr: np.ndarray, alpha: float) -> np.ndarray:
     """
     Calculate exponentially-weighted moving average using the adjusted formula.
@@ -67,7 +67,7 @@ def _ema_adjusted(arr: np.ndarray, alpha: float) -> np.ndarray:
     return out
 
 
-@nb.njit(_EMA_SIGNATURES, nogil=True, cache=True)
+@nb.njit(nogil=True, cache=True)
 def _ema_unadjusted(arr: np.ndarray, alpha: float) -> np.ndarray:
     """
     Calculate exponentially-weighted moving average using the unadjusted formula.
@@ -107,19 +107,7 @@ def _ema_unadjusted(arr: np.ndarray, alpha: float) -> np.ndarray:
     return out
 
 
-@nb.njit(
-    [
-        nb.types.float64[:](arr_type, nb.types.int64[:], nb.types.float64)
-        for arr_type in (
-            nb.types.float32[:],
-            nb.types.float64[:],
-            nb.types.int64[:],
-            nb.types.int32[:],
-        )
-    ],
-    nogil=True,
-    cache=True,
-)
+@nb.njit(nogil=True, cache=True)
 def _ema_time_weighted(arr: np.ndarray, times: np.ndarray, halflife: int) -> np.ndarray:
     """
     Calculate time-weighted exponentially-weighted moving average.
@@ -171,11 +159,6 @@ def _ema_time_weighted(arr: np.ndarray, times: np.ndarray, halflife: int) -> np.
             residual += x
 
     return out
-
-
-_ema_adjusted._can_compile = True
-_ema_unadjusted._can_compile = True
-_ema_time_weighted._can_compile = True
 
 
 def _halflife_to_int(halflife):
@@ -298,7 +281,7 @@ _EMA_SIGNATURES_GROUPED = [
 ]
 
 
-@nb.njit(_EMA_SIGNATURES_GROUPED, nogil=True, cache=True)
+@nb.njit(nogil=True, cache=True)
 def _ema_grouped(
     group_key: np.ndarray,
     values: np.ndarray,
@@ -381,7 +364,7 @@ _EMA_SIGNATURES_GROUPED_TIMED = [
 ]
 
 
-@nb.njit(_EMA_SIGNATURES_GROUPED_TIMED, nogil=True, cache=True)
+@nb.njit(nogil=True, cache=True)
 def _ema_grouped_timed(
     group_key: np.ndarray,
     values: np.ndarray,
@@ -463,11 +446,6 @@ def _ema_grouped_timed(
         last_seen[k] = out[i]
 
     return out
-
-
-# Alow signatures that have not been pre-defined to compile JIT
-_ema_grouped._can_cache = True
-_ema_grouped_timed._can_cache = True
 
 
 @check_data_inputs_aligned("group_key", "values", "times", "mask")
