@@ -151,43 +151,28 @@ def expand_index_to_new_level(index: pd.Index, new_level: pd.Index) -> pd.MultiI
     )
 
 
-def groupby_method(method):
+def groupby_method(doc_template: Optional[str] = None, full_name: Optional[str] = None):
+    """
+    Decorator to add GroupBy methods which enables classmethod-like behavior, as in GroupBy.sum(key, values).
+    Also facilitates docstring templates.
+    """
 
-    @wraps(method)
-    def wrapper(*args, **kwargs):
-        bound_args = signature(method).bind(*args, **kwargs)
-        group_key = bound_args.arguments["self"]
-        if not isinstance(group_key, GroupBy):
-            bound_args.arguments["self"] = GroupBy(group_key)
-        return method(**bound_args.arguments)
+    def decorator(method: Callable):
 
-    if method.__doc__ is None:
-        __doc__ = f"""
-        Calculate the group-wise {method.__name__} of the given values over the groups defined by `key`
+        @wraps(method)
+        def wrapper(*args, **kwargs):
+            bound_args = signature(method).bind(*args, **kwargs)
+            group_key = bound_args.arguments["self"]
+            if not isinstance(group_key, GroupBy):
+                bound_args.arguments["self"] = GroupBy(group_key)
+            return method(**bound_args.arguments)
 
-        Parameters
-        ----------
-        key: An array/Series or a container of same, such as dict, list or DataFrame
-            Defines the groups. May be a single dimension like an array or Series,
-            or multi-dimensional like a list/dict of 1-D arrays or 2-D array/DataFrame.
-        values: An array/Series or a container of same, such as dict, list or DataFrame
-            The values to be aggregated. May be a single dimension like an array or Series,
-            or multi-dimensional like a list/dict of 1-D arrays or 2-D array/DataFrame.
-        mask: array/Series
-            Optional Boolean array which filters elements out of the calculations
+        if doc_template is not None:
+            wrapper.__doc__ = doc_template.format(method=full_name or method.__name__)
 
-        Returns
-        -------
-        pd.Series / pd.DataFrame
+        return wrapper
 
-        The result of the group-by calculation.
-        A Series is returned when `values` is a single array/Series, otherwise a DataFrame.
-        The index of the result has one level per array/column in the group key.
-
-        """
-        wrapper.__doc__ = __doc__
-
-    return wrapper
+    return decorator
 
 
 class GroupBy:
@@ -1020,7 +1005,33 @@ class GroupBy:
 
         return self._maybe_squeeze_to_1d(result_df, values, len(value_list))
 
-    @groupby_method
+    _GB_REDUCTION_DOCSTRING = """
+        Calculate the {method} of the given values over the groups defined by `key`
+
+        Parameters
+        ----------
+        values : ArrayCollection
+            Values to calculate {method} for. Can be a single array/Series or a collection of them.
+        mask : ArrayType1D, optional
+            Boolean mask to filter values before calculating {method}.
+        transform : bool, default False
+            If True, return values with same shape as input rather than one value per group.
+        margins : bool or list of int, default False
+            If True, include a total row in the result. If list of integers,
+            include margin rows for the specified levels only.
+        observed_only : bool, default True
+            If True, only include groups that are observed in the data.
+        Returns
+        -------
+        pd.Series / pd.DataFrame
+
+        The {method} of each group indexed by the group keys (unless transform=True).
+        A Series is returned when `values` is a single array/Series, otherwise a DataFrame.
+        The index of the result has one level per array/column in the group key.
+
+        """
+
+    @groupby_method(_GB_REDUCTION_DOCSTRING)
     def size(
         self,
         mask: Optional[ArrayType1D] = None,
@@ -1037,7 +1048,7 @@ class GroupBy:
             observed_only=observed_only,
         )
 
-    @groupby_method
+    @groupby_method(_GB_REDUCTION_DOCSTRING)
     def count(
         self,
         values: ArrayCollection,
@@ -1046,31 +1057,16 @@ class GroupBy:
         margins: bool = False,
         observed_only: bool = True,
     ):
-        """
-        Count non-null values in each group.
-
-        Parameters
-        ----------
-        values : ArrayCollection
-            Values to count, can be a single array/Series or a collection of them.
-        mask : ArrayType1D, optional
-            Boolean mask to filter values before counting.
-        transform : bool, default False
-            If True, return values with same shape as input rather than one value per group.
-        margins : bool or list of int, default False
-            If True, include a total row in the result. If list of integers,
-            include margin rows for the specified levels only..
-
-        Returns
-        -------
-        pd.Series or pd.DataFrame
-            Count of non-null values for each group.
-        """
         return self._apply_gb_reduction(
-            "count", values=values, mask=mask, transform=transform, margins=margins
+            "count",
+            values=values,
+            mask=mask,
+            transform=transform,
+            margins=margins,
+            observed_only=observed_only,
         )
 
-    @groupby_method
+    @groupby_method(_GB_REDUCTION_DOCSTRING)
     def sum(
         self,
         values: ArrayCollection,
@@ -1079,37 +1075,9 @@ class GroupBy:
         margins: bool = False,
         observed_only: bool = True,
     ):
-        """
-        Calculate sum of values in each group.
+        return GroupBy._apply_gb_reduction(func_name="sum", **locals())
 
-        Parameters
-        ----------
-        values : ArrayCollection
-            Values to sum, can be a single array/Series or a collection of them.
-        mask : ArrayType1D, optional
-            Boolean mask to filter values before summing.
-        transform : bool, default False
-            If True, return values with same shape as input rather than one value per group.
-        margins : bool or list of int, default False
-            If True, include a total row in the result. If list of integers,
-            include margin rows for the specified levels only..
-        observed_only : bool, default True
-            If True, only include groups that are observed in the data.
-        Returns
-        -------
-        pd.Series or pd.DataFrame
-            Sum of values for each group.
-        """
-        return self._apply_gb_reduction(
-            "sum",
-            values=values,
-            mask=mask,
-            transform=transform,
-            margins=margins,
-            observed_only=observed_only,
-        )
-
-    @groupby_method
+    @groupby_method(_GB_REDUCTION_DOCSTRING)
     def mean(
         self,
         values: ArrayCollection,
@@ -1118,36 +1086,9 @@ class GroupBy:
         margins: bool = False,
         observed_only: bool = True,
     ):
-        """
-        Calculate mean of values in each group.
-        Parameters
-        ----------
-        values : ArrayCollection
-            Values to calculate mean for, can be a single array/Series or a collection of them.
-        mask : ArrayType1D, optional
-            Boolean mask to filter values before calculating mean.
-        transform : bool, default False
-            If True, return values with same shape as input rather than one value per group.
-        margins : bool or list of int, default False
-            If True, include a total row in the result. If list of integers,
-            include margin rows for the specified levels only..
-        observed_only : bool, default True
-            If True, only include groups that are observed in the data.
-        Returns
-        -------
-        pd.Series or pd.DataFrame
-            Mean of values for each group.
-        """
-        return self._apply_gb_reduction(
-            "mean",
-            values=values,
-            mask=mask,
-            transform=transform,
-            margins=margins,
-            observed_only=observed_only,
-        )
+        return GroupBy._apply_gb_reduction(func_name="mean", **locals())
 
-    @groupby_method
+    @groupby_method(_GB_REDUCTION_DOCSTRING)
     def min(
         self,
         values: ArrayCollection,
@@ -1156,38 +1097,9 @@ class GroupBy:
         margins: bool = False,
         observed_only: bool = True,
     ):
-        """
-        Calculate minimum value in each group.
+        return GroupBy._apply_gb_reduction(func_name="min", **locals())
 
-        Parameters
-        ----------
-        values : ArrayCollection
-            Values to find minimum for, can be a single array/Series or a collection of them.
-        mask : ArrayType1D, optional
-            Boolean mask to filter values before finding minimum.
-        transform : bool, default False
-            If True, return values with same shape as input rather than one value per group.
-        margins : bool or list of int, default False
-            If True, include a total row in the result. If list of integers,
-            include margin rows for the specified levels only..
-        observed_only : bool, default True
-            If True, only include groups that are observed in the data.
-
-        Returns
-        -------
-        pd.Series or pd.DataFrame
-            Minimum value for each group.
-        """
-        return self._apply_gb_reduction(
-            "min",
-            values=values,
-            mask=mask,
-            transform=transform,
-            margins=margins,
-            observed_only=observed_only,
-        )
-
-    @groupby_method
+    @groupby_method(_GB_REDUCTION_DOCSTRING)
     def max(
         self,
         values: ArrayCollection,
@@ -1196,38 +1108,9 @@ class GroupBy:
         margins: bool = False,
         observed_only: bool = True,
     ):
-        """
-        Calculate maximum value in each group.
+        return GroupBy._apply_gb_reduction(func_name="max", **locals())
 
-        Parameters
-        ----------
-        values : ArrayCollection
-            Values to find maximum for, can be a single array/Series or a collection of them.
-        mask : ArrayType1D, optional
-            Boolean mask to filter values before finding maximum.
-        transform : bool, default False
-            If True, return values with same shape as input rather than one value per group.
-        margins : bool or list of int, default False
-            If True, include a total row in the result. If list of integers,
-            include margin rows for the specified levels only..
-        observed_only : bool, default True
-            If True, only include groups that are observed in the data.
-
-        Returns
-        -------
-        pd.Series or pd.DataFrame
-            Maximum value for each group.
-        """
-        return self._apply_gb_reduction(
-            "max",
-            values=values,
-            mask=mask,
-            transform=transform,
-            margins=margins,
-            observed_only=observed_only,
-        )
-
-    @groupby_method
+    @groupby_method(_GB_REDUCTION_DOCSTRING, full_name="variance")
     def var(
         self,
         values: ArrayCollection,
@@ -1237,30 +1120,6 @@ class GroupBy:
         ddof: int = 1,
         observed_only: bool = True,
     ):
-        """
-        Calculate variance of values in each group.
-
-        Parameters
-        ----------
-        values : ArrayCollection
-            Values to calculate variance for, can be a single array/Series or a collection of them.
-        mask : ArrayType1D, optional
-            Boolean mask to filter values before calculating variance.
-        transform : bool, default False
-            If True, return values with same shape as input rather than one value per group.
-        margins : bool or list of int, default False
-            If True, include a total row in the result. If list of integers,
-            include margin rows for the specified levels only..
-        ddof : int, default 0
-            Delta degrees of freedom.
-        observed_only : bool, default True
-            If True, only include groups that are observed in the data.
-
-        Returns
-        -------
-        pd.Series or pd.DataFrame
-            Variance of values for each group.
-        """
         kwargs = dict(
             mask=mask, margins=margins, transform=transform, observed_only=observed_only
         )
@@ -1269,7 +1128,7 @@ class GroupBy:
         count = self.count(values=values, **kwargs)
         return (sq_sum - sum_sq / count) / (count - ddof)
 
-    @groupby_method
+    @groupby_method(_GB_REDUCTION_DOCSTRING, full_name="standard deviation")
     def std(
         self,
         values: ArrayCollection,
@@ -1279,33 +1138,9 @@ class GroupBy:
         ddof: int = 1,
         observed_only: bool = True,
     ):
-        """
-        Calculate standard deviation of values in each group.
-
-        Parameters
-        ----------
-        values : ArrayCollection
-            Values to calculate standard deviation for, can be a single array/Series or a collection of them.
-        mask : ArrayType1D, optional
-            Boolean mask to filter values before calculating standard deviation.
-        transform : bool, default False
-            If True, return values with same shape as input rather than one value per group.
-        margins : bool or list of int, default False
-            If True, include a total row in the result. If list of integers,
-            include margin rows for the specified levels only..
-        ddof : int, default 0
-            Delta degrees of freedom.
-        observed_only : bool, default True
-            If True, only include groups that are observed in the data.
-
-        Returns
-        -------
-        pd.Series or pd.DataFrame
-            Standard deviation of values for each group.
-        """
         return GroupBy.var(**locals()) ** 0.5
 
-    @groupby_method
+    @groupby_method(_GB_REDUCTION_DOCSTRING)
     def first(
         self,
         values: ArrayCollection,
@@ -1314,38 +1149,9 @@ class GroupBy:
         margins: bool = False,
         observed_only: bool = True,
     ):
-        """
-        Get the first non-null value in each group. Use nth(0) for the first value including nulls.
+        return GroupBy._apply_gb_reduction(func_name="first", **locals())
 
-        Parameters
-        ----------
-        values : ArrayCollection
-            Values to get the first value from, can be a single array/Series or a collection of them.
-        mask : ArrayType1D, optional
-            Boolean mask to filter values before getting the first value.
-        transform : bool, default False
-            If True, return values with same shape as input rather than one value per group.
-        margins : bool or list of int, default False
-            If True, include a total row in the result. If list of integers,
-            include margin rows for the specified levels only..
-        observed_only : bool, default True
-            If True, only include groups that are observed in the data.
-
-        Returns
-        -------
-        pd.Series or pd.DataFrame
-            First value for each group.
-        """
-        return self._apply_gb_reduction(
-            "first",
-            values=values,
-            mask=mask,
-            transform=transform,
-            margins=margins,
-            observed_only=observed_only,
-        )
-
-    @groupby_method
+    @groupby_method(_GB_REDUCTION_DOCSTRING)
     def last(
         self,
         values: ArrayCollection,
@@ -1354,38 +1160,9 @@ class GroupBy:
         margins: bool = False,
         observed_only: bool = True,
     ):
-        """
-        Get the last non-null value in each group. Use nth(-1) for the last value including nulls.
+        return GroupBy._apply_gb_reduction(func_name="last", **locals())
 
-        Parameters
-        ----------
-        values : ArrayCollection
-            Values to get the last value from, can be a single array/Series or a collection of them.
-        mask : ArrayType1D, optional
-            Boolean mask to filter values before getting the last value.
-        transform : bool, default False
-            If True, return values with same shape as input rather than one value per group.
-        margins : bool or list of int, default False
-            If True, include a total row in the result. If list of integers,
-            include margin rows for the specified levels only..
-        observed_only : bool, default True
-            If True, only include groups that are observed in the data.
-
-        Returns
-        -------
-        pd.Series or pd.DataFrame
-            Last value for each group.
-        """
-        return self._apply_gb_reduction(
-            "last",
-            values=values,
-            mask=mask,
-            transform=transform,
-            margins=margins,
-            observed_only=observed_only,
-        )
-
-    @groupby_method
+    @groupby_method()
     def agg(
         self,
         values: ArrayCollection,
@@ -1641,6 +1418,7 @@ class GroupBy:
         """
         return self.apply(values=values, mask=mask, func=np.median)
 
+    @groupby_method()
     def quantile(
         self, values: ArrayCollection, q: List[float], mask: Optional[np.ndarray] = None
     ) -> pd.Series | pd.DataFrame:
@@ -1691,7 +1469,7 @@ class GroupBy:
         result.index.names = [*result.index.names[:-1], "q"]
         return result
 
-    @groupby_method
+    @groupby_method()
     def ema(
         self,
         values: ArrayCollection,
@@ -1828,7 +1606,7 @@ class GroupBy:
 
         return result
 
-    @groupby_method
+    @groupby_method()
     def ratio(
         self,
         values1: ArrayCollection,
@@ -1876,6 +1654,7 @@ class GroupBy:
         kwargs = dict(mask=mask, agg_func=agg_func, margins=margins)
         return self.agg(values1, **kwargs) / self.agg(values2, **kwargs)
 
+    @groupby_method()
     def subset_ratio(
         self,
         values: ArrayCollection,
@@ -1912,7 +1691,7 @@ class GroupBy:
             **kwargs, mask=global_mask
         )
 
-    @groupby_method
+    @groupby_method()
     def density(
         self,
         values: Optional[ArrayCollection] = None,
@@ -2010,6 +1789,7 @@ class GroupBy:
 
         return result
 
+    @groupby_method()
     def head(self, values: ArrayCollection, n: int, keep_input_index: bool = False):
         """
         Return first n rows of each group.
@@ -2043,6 +1823,7 @@ class GroupBy:
             values=values, ilocs=ilocs, keep_input_index=keep_input_index, n=n
         )
 
+    @groupby_method()
     def tail(self, values: ArrayCollection, n: int, keep_input_index: bool = False):
         """
         Return last n rows of each group.
@@ -2075,6 +1856,7 @@ class GroupBy:
             values=values, ilocs=ilocs, keep_input_index=keep_input_index, n=n
         )
 
+    @groupby_method()
     def nth(self, values: ArrayCollection, n: int, keep_input_index: bool = False):
         """
         Return nth row of each group.
@@ -2478,7 +2260,7 @@ class GroupBy:
             "cummax", values, mask, skip_na=skip_na
         )
 
-    @groupby_method
+    @groupby_method()
     def shift(
         self,
         values: ArrayCollection,
@@ -2529,7 +2311,7 @@ class GroupBy:
 
     rolling_shift = shift
 
-    @groupby_method
+    @groupby_method()
     def diff(
         self,
         values: ArrayCollection,
@@ -2580,7 +2362,7 @@ class GroupBy:
 
     rolling_diff = diff
 
-    @groupby_method
+    @groupby_method()
     def group_nearby_members(self, values: ArrayType1D, max_diff: int | float):
         """
         Generate subgroups of the groups defined by the GroupBy where the differences between consecutive members of a group are below a threshold.
