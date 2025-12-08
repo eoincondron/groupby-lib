@@ -2050,20 +2050,14 @@ class GroupBy:
             func_name="rolling_max", **locals()
         )
 
-    @groupby_method
-    def cumsum(
-        self,
-        values: ArrayCollection,
-        mask: Optional[ArrayType1D] = None,
-        skip_na: bool = True,
-    ):
-        """
-        Calculate cumulative sum of values in each group.
+
+    _CUMULATIVE_GB_DOCSTRING = """
+        Calculate cumulative {method} of values in each group.
 
         Parameters
         ----------
         values : ArrayCollection
-            Values to calculate cumulative sum for, can be a single array/Series or a collection of them.
+            Values to calculate cumulative {method} for, can be a single array/Series or a collection of them.
         mask : ArrayType1D, optional
             Boolean mask to filter values before calculation.
         skip_na : bool, default True
@@ -2072,13 +2066,21 @@ class GroupBy:
         Returns
         -------
         pd.Series or pd.DataFrame
-            Cumulative sum of values for each group, same shape as input.
+            Cumulative {method} of values for each group, same shape as input.
         """
+
+    @groupby_method(_CUMULATIVE_GB_DOCSTRING, "sum")
+    def cumsum(
+        self,
+        values: ArrayCollection,
+        mask: Optional[ArrayType1D] = None,
+        skip_na: bool = True,
+    ):
         return self._apply_rolling_or_cumulative_func(
             "cumsum", values, mask, skip_na=skip_na
         )
 
-    @groupby_method
+    @groupby_method()
     def cumcount(
         self,
         mask: Optional[ArrayType1D] = None,
@@ -2100,58 +2102,24 @@ class GroupBy:
         """
         return self._apply_rolling_or_cumulative_func("cumcount", self.group_ikey, mask)
 
-    @groupby_method
+    @groupby_method(_CUMULATIVE_GB_DOCSTRING, "min")
     def cummin(
         self,
         values: ArrayCollection,
         mask: Optional[ArrayType1D] = None,
         skip_na: bool = True,
     ):
-        """
-        Calculate cumulative minimum of values in each group.
-
-        Parameters
-        ----------
-        values : ArrayCollection
-            Values to calculate cumulative minimum for, can be a single array/Series or a collection of them.
-        mask : ArrayType1D, optional
-            Boolean mask to filter values before calculation.
-        skip_na : bool, default True
-            Whether to skip NA/null values in the calculation.
-
-        Returns
-        -------
-        pd.Series or pd.DataFrame
-            Cumulative minimum of values for each group, same shape as input.
-        """
         return self._apply_rolling_or_cumulative_func(
             "cummin", values, mask, skip_na=skip_na
         )
 
-    @groupby_method
+    @groupby_method(_CUMULATIVE_GB_DOCSTRING, "max")
     def cummax(
         self,
         values: ArrayCollection,
         mask: Optional[ArrayType1D] = None,
         skip_na: bool = True,
     ):
-        """
-        Calculate cumulative maximum of values in each group.
-
-        Parameters
-        ----------
-        values : ArrayCollection
-            Values to calculate cumulative maximum for, can be a single array/Series or a collection of them.
-        mask : ArrayType1D, optional
-            Boolean mask to filter values before calculation.
-        skip_na : bool, default True
-            Whether to skip NA/null values in the calculation.
-
-        Returns
-        -------
-        pd.Series or pd.DataFrame
-            Cumulative maximum of values for each group, same shape as input.
-        """
         return self._apply_rolling_or_cumulative_func(
             "cummax", values, mask, skip_na=skip_na
         )
