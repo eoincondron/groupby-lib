@@ -1250,6 +1250,7 @@ class GroupBy:
         values: ArrayCollection,
         func: Callable,
         mask: Optional[np.ndarray] = None,
+        transform: bool = False,
         *func_args,
         **func_kwargs,
     ) -> pd.DataFrame | pd.Series:
@@ -1275,6 +1276,8 @@ class GroupBy:
             Boolean mask array indicating which rows to include. If provided,
             only rows where mask is True will be included in the calculation.
             Default is None (include all rows).
+        transform : bool, default False
+            If True, return values with same shape as input rather than one value per group.
         *func_args
             Additional positional arguments to pass to func.
         **func_kwargs
@@ -1304,6 +1307,10 @@ class GroupBy:
         3     0
         dtype: int64
         """
+        # allow calling as a class method
+        if not isinstance(self, GroupBy):
+            self = GroupBy(self)
+
         value_names, value_list, type_list, common_index = self._preprocess_arguments(
             values, mask=mask
         )
@@ -1352,9 +1359,23 @@ class GroupBy:
         if np.ndim(results_per_value[0][0]) == 0:
             # safe to assume it's a scalar value function
             arrays = map(np.array, results_per_value)
-            index = group_index
+            if transform:
+                self._unify_group_key_chunks(keep_chunked=False)
+                arrays = [arr[self.group_ikey] for arr in arrays]
+                index = (
+                    common_index
+                    if common_index is not None
+                    else pd.RangeIndex(len(self))
+                )
+            else:
+                index = group_index
             could_be_non_reduce = False
         else:
+            if transform:
+                raise ValueError(
+                    "transform=True is not supported for non-scalar functions"
+                )
+
             # if func returns a vector either the result is aligned with the input (non-reducing) or
             # the lengths are fixed, as in quantile with more than one q value.
             arrays = list(map(np.concatenate, results_per_value))
@@ -1402,28 +1423,19 @@ class GroupBy:
 
         return result
 
-    @groupby_method
+    @groupby_method(_GB_REDUCTION_DOCSTRING)
     def median(
-        self, values: ArrayCollection, mask: Optional[np.ndarray] = None
+        self,
+        values: ArrayCollection,
+        mask: Optional[np.ndarray] = None,
+        transform: bool = False,
     ) -> pd.Series | pd.DataFrame:
-        """Calculate the median of the provided values for each group.
-        Parameters
-        ----------
-        values : ArrayCollection
-            Values to calculate the median for, can be a single array/Series or a collection of them.
-        mask : Optional[ArrayType1D], default None
-            Boolean mask to filter values before calculating the median.
-        transform : bool, default False
-            If True, return values with the same shape as input rather than one value per group.
-        observed_only : bool, default True
-            If True, only include groups that are observed in the data.
-        Returns
-        -------
-        pd.Series or pd.DataFrame
-            The median of the values for each group.
-            If `transform` is True, returns a Series/DataFrame with the same shape as input.
-        """
-        return self.apply(values=values, mask=mask, func=np.median)
+        return self.apply(
+            values=values,
+            mask=mask,
+            func=np.median,
+            transform=transform,
+        )
 
     @groupby_method()
     def quantile(
