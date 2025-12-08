@@ -477,7 +477,7 @@ def jit_get_first_non_null(arr):
 
 
 def _scalar_func_decorator(func):
-    return staticmethod(nb.njit(nogil=True, cache=True)(func))
+    return staticmethod(nb.njit(nogil=True, cache=True, inline="always")(func))
 
 
 class NumbaReductionOps:
