@@ -620,7 +620,12 @@ class BaseGroupByRolling:
         self._window = window
         self._min_periods = min_periods if min_periods is not None else window
 
-    def agg(self, method_name: str, mask: Optional[ArrayType1D] = None):
+    def agg(
+        self,
+        method_name: str,
+        mask: Optional[ArrayType1D] = None,
+        index_by_groups: bool = False,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Apply a rolling method and return the result.
 
@@ -630,6 +635,9 @@ class BaseGroupByRolling:
             Name of the rolling method (e.g., 'sum', 'mean', 'min', 'max')
         mask : ArrayType1D, optional
             Boolean mask to filter values before calculation
+        index_by_groups : bool, default False
+            If True, the result has the sorted group keys as the outer index level
+            similarly to pandas behavior. This is considerably slower than the default behavior.
 
         Returns
         -------
@@ -638,10 +646,20 @@ class BaseGroupByRolling:
         """
         method = getattr(self._groupby_obj._grouper, f"rolling_{method_name}")
         return self._format_result(
-            method(self._groupby_obj._obj, window=self._window, mask=mask)
+            method(
+                self._groupby_obj._obj,
+                window=self._window,
+                min_periods=self._min_periods,
+                mask=mask,
+                index_by_groups=index_by_groups,
+            )
         )
 
-    def sum(self, mask: Optional[ArrayType1D] = None) -> Union[pd.Series, pd.DataFrame]:
+    def sum(
+        self,
+        mask: Optional[ArrayType1D] = None,
+        index_by_groups: bool = False,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Calculate rolling sum within each group.
 
@@ -655,10 +673,12 @@ class BaseGroupByRolling:
         pd.Series or pd.DataFrame
             Rolling sum values with same shape as input
         """
-        return self.agg("sum", mask=mask)
+        return self.agg("sum", mask=mask, index_by_groups=index_by_groups)
 
     def mean(
-        self, mask: Optional[ArrayType1D] = None
+        self,
+        mask: Optional[ArrayType1D] = None,
+        index_by_groups: bool = False,
     ) -> Union[pd.Series, pd.DataFrame]:
         """
         Calculate rolling mean within each group.
@@ -673,9 +693,13 @@ class BaseGroupByRolling:
         pd.Series or pd.DataFrame
             Rolling mean values with same shape as input
         """
-        return self.agg("mean", mask=mask)
+        return self.agg("mean", mask=mask, index_by_groups=index_by_groups)
 
-    def min(self, mask: Optional[ArrayType1D] = None) -> Union[pd.Series, pd.DataFrame]:
+    def min(
+        self,
+        mask: Optional[ArrayType1D] = None,
+        index_by_groups: bool = False,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Calculate rolling minimum within each group.
 
@@ -689,9 +713,13 @@ class BaseGroupByRolling:
         pd.Series or pd.DataFrame
             Rolling minimum values with same shape as input
         """
-        return self.agg("min", mask=mask)
+        return self.agg("min", mask=mask, index_by_groups=index_by_groups)
 
-    def max(self, mask: Optional[ArrayType1D] = None) -> Union[pd.Series, pd.DataFrame]:
+    def max(
+        self,
+        mask: Optional[ArrayType1D] = None,
+        index_by_groups: bool = False,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Calculate rolling maximum within each group.
 
@@ -705,7 +733,7 @@ class BaseGroupByRolling:
         pd.Series or pd.DataFrame
             Rolling maximum values with same shape as input
         """
-        return self.agg("max", mask=mask)
+        return self.agg("max", mask=mask, index_by_groups=index_by_groups)
 
     def _format_result(self, result) -> Union[pd.Series, pd.DataFrame]:
         """Format the result according to the specific GroupBy type."""
