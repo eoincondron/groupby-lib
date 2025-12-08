@@ -1021,6 +1021,12 @@ def _val_to_numpy(
             f"Cannot convert input of type {type(val)} with ndim ({np.ndim(val)}) to numpy vector"
         )
 
+    if isinstance(getattr(val, "dtype", None), np.dtype):
+        if as_list:
+            return NumbaList([np.asarray(val)])
+        else:
+            return np.asarray(val)
+
     try:
         arrow: pa.Array = to_arrow(val)
         is_chunked = isinstance(
