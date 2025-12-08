@@ -127,7 +127,7 @@ def _ensure_multi_index(index: pd.Index) -> pd.MultiIndex:
 
 def expand_index_to_new_level(index: pd.Index, new_level: pd.Index) -> pd.MultiIndex:
     """
-    Expand a pandas Index to include a new level, taking the cartesian product. 
+    Expand a pandas Index to include a new level, taking the cartesian product.
 
     Examples
     --------
