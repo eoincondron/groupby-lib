@@ -125,7 +125,23 @@ def _ensure_multi_index(index: pd.Index) -> pd.MultiIndex:
     return index
 
 
-def expand_index_to_new_level(index, new_level):
+def expand_index_to_new_level(index: pd.Index, new_level: pd.Index) -> pd.MultiIndex:
+    """
+    Expand a pandas Index to include a new level, taking the cartesian product. 
+
+    Examples
+    --------
+    >>> index = pd.Index(['a', 'b'])
+    >>> new_level = pd.Index([1, 2, 3])
+    >>> expand_index_to_new_level(index, new_level)
+    MultiIndex([('a', 1),
+                ('a', 2),
+                ('a', 3),
+                ('b', 1),
+                ('b', 2),
+                ('b', 3)],
+               )
+    """
     index = _ensure_multi_index(index)
     repeated_codes = [np.repeat(codes, len(new_level)) for codes in index.codes]
     return pd.MultiIndex(
@@ -1676,6 +1692,143 @@ class GroupBy:
         return result
 
     @groupby_method
+    def ema(
+        self,
+        values: ArrayCollection,
+        alpha: Optional[float] = None,
+        halflife: Optional[float] = None,
+        times: Optional[ArrayType1D] = None,
+        mask: Optional[ArrayType1D] = None,
+        index_by_groups: bool = False,
+    ) -> pd.Series | pd.DataFrame:
+        """
+        Calculate exponentially-weighted moving average (EWMA) for each group.
+
+        Computes an exponential moving average for each group independently.
+        Each group maintains its own state and the EMA is calculated within
+        each group separately. This is useful for time-series data where you
+        want smooth trends within groups without information bleeding across
+        group boundaries.
+
+        Parameters
+        ----------
+        values : ArrayCollection
+            Values to calculate EMA for. Can be a single array/Series or a
+            collection (list, dict) of arrays/Series.
+        alpha : float, optional
+            Smoothing factor, between 0 and 1. Higher values give more weight
+            to recent data. Either alpha or halflife must be provided (not both).
+        halflife : float, optional
+            Halflife for the exponential decay. Either alpha or halflife must
+            be provided (not both). When used with times parameter, halflife
+            should be a string (e.g., '1h', '30min') compatible with pd.Timedelta.
+        times : array-like, optional
+            Array of timestamps corresponding to the input data. If provided,
+            the EWMA will be time-weighted based on the halflife parameter.
+            Must be the same length as values.
+        mask : np.ndarray, optional
+            Boolean mask array indicating which rows to include. If provided,
+            only rows where mask is True will be included in the calculation.
+            Default is None (include all rows).
+        index_by_groups:
+            If True, result is multi-indexed with the outer level corresponding to the group
+            unique group key and sorted by same. This is line with the Pandas behaviour but comes
+            at a significant performance cost.
+
+        Returns
+        -------
+        pd.Series | pd.DataFrame
+            The exponentially-weighted moving average for each group.
+            Returns the same shape as input values (transform-style output).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from groupby_lib import GroupBy
+        >>>
+        >>> # Basic grouped EMA with alpha
+        >>> key = pd.Series([1, 1, 1, 2, 2, 2])
+        >>> values = pd.Series([1.0, 2.0, 3.0, 10.0, 20.0, 30.0])
+        >>> gb = GroupBy(key)
+        >>> gb.ema(values, alpha=0.5)
+        0     1.000000
+        1     1.666667
+        2     2.428571
+        3    10.000000
+        4    16.666667
+        5    24.285714
+        dtype: float64
+
+        >>> # Time-weighted EMA
+        >>> times = pd.date_range('2024-01-01', periods=6, freq='1h')
+        >>> gb.ema(values, halflife='2h', times=times)
+        0     1.000000
+        1     1.585786
+        2     2.301270
+        3    10.000000
+        4    15.857864
+        5    23.012702
+        dtype: float64
+
+        Notes
+        -----
+        - Groups are processed in the order they appear in the data
+        - Each group's EMA starts fresh (no information carries between groups)
+        - NaN values in the input will propagate the last valid EMA value
+        - The adjusted formula is always used (similar to adjust=True in pandas)
+
+        See Also
+        --------
+        ema_grouped : Standalone function for grouped EMA
+        """
+        from ..emas import ema_grouped
+
+        value_names, value_list, type_list, common_index = self._preprocess_arguments(
+            values, mask
+        )
+
+        if index_by_groups:
+            indexer = self._group_sort_indexer
+            result_index = self._build_group_sorted_index(common_index)
+            group_counts = self.ikey_count[self._labels_argsort]
+            group_key = np.repeat(np.arange(self.ngroups), group_counts)
+        else:
+            indexer = slice(None)
+            result_index = common_index
+            group_key = self.group_ikey
+
+        arg_list = [
+            signature(ema_grouped)
+            .bind(
+                group_key=group_key,
+                ngroups=self.ngroups,
+                values=_val_to_numpy(val_arr)[indexer],
+                alpha=alpha,
+                halflife=halflife,
+                times=None if times is None else times[indexer],
+                mask=None if mask is None else mask[indexer],
+            )
+            .args
+            for val_arr in value_list
+        ]
+        results = parallel_map(ema_grouped, arg_list)
+
+        results = (
+            self._convert_arr_to_series(arr, pd_type, result_index)
+            for arr, pd_type in zip(results, type_list)
+        )
+        col_names = self._col_names_from_value_names(value_names)
+
+        result_df = pd.DataFrame(
+            dict(zip(col_names, results)),
+            copy=False,
+        )
+        result = self._maybe_squeeze_to_1d(result_df, values, len(value_list))
+
+        return result
+
+    @groupby_method
     def ratio(
         self,
         values1: ArrayCollection,
@@ -1954,11 +2107,52 @@ class GroupBy:
 
         return np.concatenate(list(self.groups.values()))
 
-    def _sort_rolling_calculation_group_keys_first(self, result):
+    def _sort_rolling_calculation_group_keys_first(
+        self, result
+    ) -> pd.Series | pd.DataFrame:
+        """
+        Reorder rolling/cumulative calculation results to group all rows by group key.
+
+        This method reorganizes the result of rolling or cumulative operations so that
+        all rows belonging to the same group are contiguous, with groups sorted by
+        their keys. It also creates a MultiIndex where the outer level is the group
+        key and the inner level(s) represent the original row index.
+
+        This is useful for rolling/cumulative operations where the calculation is done
+        row-by-row in the original data order, but the output should be organized by
+        groups for easier interpretation and downstream processing.
+
+        Parameters
+        ----------
+        result : pd.Series or pd.DataFrame
+            The result from a rolling or cumulative calculation, with rows in the
+            original data order.
+
+        Returns
+        -------
+        pd.Series or pd.DataFrame
+            The reordered result with:
+            - Rows sorted so all members of each group are contiguous
+            - Groups ordered by sorted group keys
+            - MultiIndex with outer level as sorted group keys and inner level(s)
+              as the original index (or RangeIndex if no original index exists)
+
+        Notes
+        -----
+        The method builds the sort key by:
+        1. Sorting the group keys
+        2. Concatenating the row indices for each sorted group
+        3. Using this concatenated array to reindex the result
+
+        The MultiIndex is constructed with:
+        - Outer level: Sorted group keys
+        - Inner level(s): Original index (factorized if single-level, or
+          preserving the codes/levels structure if already a MultiIndex)
+        """
         sorted_keys = pd.Index(self.groups.keys()).sort_values()
         sorted_arrays = [self.groups[k] for k in sorted_keys]
         _group_first_sort_key = np.concatenate(sorted_arrays)
-        result = result.iloc[_group_first_sort_key]
+
         inner_index = self._key_index
         if self._key_index is None:
             inner_index = pd.RangeIndex(len(self._group_ikey))
@@ -1966,7 +2160,9 @@ class GroupBy:
 
         # build a multiindex with outer level as group keys and inner level as original index
         levels = [sorted_keys]
-        codes = [np.repeat(sorted_keys, [len(arr) for arr in sorted_arrays])]
+        codes = [
+            np.repeat(np.arange(len(sorted_keys)), [len(arr) for arr in sorted_arrays])
+        ]
         if inner_index.nlevels == 1:
             inner_codes, inner_level = factorize_1d(inner_index)
             codes.append(inner_codes),
@@ -1976,6 +2172,8 @@ class GroupBy:
             levels.extend(inner_index.levels)
 
         index = pd.MultiIndex(codes=codes, levels=levels, verify_integrity=False)
+
+        result = result.iloc[_group_first_sort_key]
         result.index = index
 
         return result

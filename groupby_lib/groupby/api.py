@@ -448,6 +448,71 @@ class BaseGroupBy(ABC):
     def cumcount(self) -> pd.Series:
         return self._grouper.cumcount(self._obj)
 
+    def ema(
+        self,
+        alpha: Optional[float] = None,
+        halflife: Optional[float] = None,
+        times: Optional[ArrayType1D] = None,
+        mask: Optional[ArrayType1D] = None,
+        index_by_groups: bool = False,
+    ) -> Union[pd.Series, pd.DataFrame]:
+        """
+        Calculate exponentially-weighted moving average (EWMA) for each group.
+
+        Computes an exponential moving average for each group independently.
+        Each group maintains its own state and the EMA is calculated within
+        each group separately.
+
+        Parameters
+        ----------
+        alpha : float, optional
+            Smoothing factor, between 0 and 1. Higher values give more weight
+            to recent data. Either alpha or halflife must be provided (not both).
+        halflife : float, optional
+            Halflife for the exponential decay. Either alpha or halflife must
+            be provided (not both). When used with times parameter, halflife
+            should be a string (e.g., '1h', '30min') compatible with pd.Timedelta.
+        times : array-like, optional
+            Array of timestamps corresponding to the input data. If provided,
+            the EWMA will be time-weighted based on the halflife parameter.
+            Must be the same length as values.
+        mask : np.ndarray, optional
+            Boolean mask array indicating which rows to include. If provided,
+            only rows where mask is True will be included in the calculation.
+            Default is None (include all rows).
+        index_by_groups : bool, default False
+            If True, sort groups before calculating EMA for better performance.
+
+        Returns
+        -------
+        pd.Series or pd.DataFrame
+            The exponentially-weighted moving average for each group.
+            Returns the same shape as input values (transform-style output).
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> s = pd.Series([1.0, 2.0, 3.0, 10.0, 20.0, 30.0])
+        >>> groups = pd.Series([1, 1, 1, 2, 2, 2])
+        >>> gb = s.groupby_fast(groups)
+        >>> gb.ema(alpha=0.5)
+        0     1.000000
+        1     1.666667
+        2     2.428571
+        3    10.000000
+        4    16.666667
+        5    24.285714
+        dtype: float64
+        """
+        return self._grouper.ema(
+            self._obj,
+            alpha=alpha,
+            halflife=halflife,
+            times=times,
+            mask=mask,
+            index_by_groups=index_by_groups,
+        )
+
 
 class SeriesGroupBy(BaseGroupBy):
     """
