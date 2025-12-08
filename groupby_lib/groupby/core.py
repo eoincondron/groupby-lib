@@ -558,15 +558,22 @@ class GroupBy:
         return index
 
     def _unify_group_key_chunks(self, keep_chunked=False):
-        if self._group_key_pointers is not None and self.key_is_chunked:
+        if not self.key_is_chunked:
+            return
+
+        if self._group_key_pointers is not None:
             chunks = [
                 p[k] for p, k in zip(self._group_key_pointers, self._group_ikey.chunks)
             ]
-            if keep_chunked:
-                self._group_ikey = pa.chunked_array(chunks)
-            else:
-                self._group_ikey = np.concatenate(chunks)
             self._group_key_pointers = None
+        elif keep_chunked:
+            # no pointers to unify, but we want to keep chunked so do nothing
+            return
+
+        if keep_chunked:
+            self._group_ikey = pa.chunked_array(chunks)
+        else:
+            self._group_ikey = np.concatenate(chunks)
 
     @cached_property
     def has_null_keys(self) -> bool:
