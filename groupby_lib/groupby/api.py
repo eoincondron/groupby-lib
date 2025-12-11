@@ -120,8 +120,10 @@ class BaseGroupBy(ABC):
     This class contains common functionality shared between SeriesGroupBy
     and DataFrameGroupBy classes.
     """
+
     _grouper: GroupBy
     _obj: Union[pd.Series, pd.DataFrame]
+    _values_to_group: Union[pd.Series, pd.DataFrame]
 
     @property
     def grouper(self) -> GroupBy:
@@ -138,6 +140,22 @@ class BaseGroupBy(ABC):
         """Number of groups."""
         return self._grouper.ngroups
 
+    @property
+    @abstractmethod
+    def _values_to_group(self) -> Union[pd.Series, Dict[Hashable, pd.Series]]:
+        """
+        Extract values to be grouped from the object.
+
+        This method should be implemented by subclasses to return the
+        appropriate values (Series or dict of Series) to be grouped.
+
+        Returns
+        -------
+        Union[pd.Series, Dict[Hashable, pd.Series]]
+            Values to group
+        """
+        pass
+
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(ngroups={self.ngroups})"
 
@@ -149,13 +167,13 @@ class BaseGroupBy(ABC):
     def sum(
         self, mask: Optional[ArrayType1D] = None, margins: bool = False
     ) -> pd.Series:
-        return self._grouper.sum(self._obj, mask=mask, margins=margins)
+        return self._grouper.sum(self._values_to_group, mask=mask, margins=margins)
 
     @groupby_aggregation("Compute mean of group values")
     def mean(
         self, mask: Optional[ArrayType1D] = None, margins: bool = False
     ) -> pd.Series:
-        return self._grouper.mean(self._obj, mask=mask, margins=margins)
+        return self._grouper.mean(self._values_to_group, mask=mask, margins=margins)
 
     @groupby_aggregation(
         "Compute standard deviation of group values",
@@ -164,7 +182,9 @@ class BaseGroupBy(ABC):
     def std(
         self, ddof: int = 1, mask: Optional[ArrayType1D] = None, margins: bool = False
     ) -> pd.Series:
-        return self._grouper.std(self._obj, ddof=ddof, mask=mask, margins=margins)
+        return self._grouper.std(
+            self._values_to_group, ddof=ddof, mask=mask, margins=margins
+        )
 
     @groupby_aggregation(
         "Compute variance of group values",
@@ -173,23 +193,25 @@ class BaseGroupBy(ABC):
     def var(
         self, ddof: int = 1, mask: Optional[ArrayType1D] = None, margins: bool = False
     ) -> pd.Series:
-        return self._grouper.var(self._obj, ddof=ddof, mask=mask, margins=margins)
+        return self._grouper.var(
+            self._values_to_group, ddof=ddof, mask=mask, margins=margins
+        )
 
     @groupby_aggregation("Compute minimum of group values")
     def min(
         self, mask: Optional[ArrayType1D] = None, margins: bool = False
     ) -> pd.Series:
-        return self._grouper.min(self._obj, mask=mask, margins=margins)
+        return self._grouper.min(self._values_to_group, mask=mask, margins=margins)
 
     @groupby_aggregation("Compute maximum of group values")
     def max(
         self, mask: Optional[ArrayType1D] = None, margins: bool = False
     ) -> pd.Series:
-        return self._grouper.max(self._obj, mask=mask, margins=margins)
+        return self._grouper.max(self._values_to_group, mask=mask, margins=margins)
 
     @groupby_aggregation("Compute median of group values")
     def median(self, mask: Optional[ArrayType1D] = None) -> pd.Series:
-        return self._grouper.median(self._obj, mask=mask)
+        return self._grouper.median(self._values_to_group, mask=mask)
 
     @groupby_aggregation("Compute quantiles of group values")
     def quantile(
@@ -197,7 +219,7 @@ class BaseGroupBy(ABC):
         q: List[float] | np.ndarray,
         mask: Optional[ArrayType1D] = None,
     ) -> pd.Series:
-        return self._grouper.quantile(self._obj, q=q, mask=mask)
+        return self._grouper.quantile(self._values_to_group, q=q, mask=mask)
 
     @groupby_aggregation(
         "Compute count of non-null group values",
@@ -205,7 +227,7 @@ class BaseGroupBy(ABC):
         include_margins=False,
     )
     def count(self, mask: Optional[ArrayType1D] = None) -> pd.Series:
-        return self._grouper.count(self._obj, mask=mask)
+        return self._grouper.count(self._values_to_group, mask=mask)
 
     @groupby_aggregation(
         "Compute group sizes (including null values)",
@@ -226,7 +248,7 @@ class BaseGroupBy(ABC):
     def first(
         self, numeric_only: bool = False, mask: Optional[ArrayType1D] = None
     ) -> pd.Series:
-        return self._grouper.first(self._obj, mask=mask)
+        return self._grouper.first(self._values_to_group, mask=mask)
 
     @groupby_aggregation(
         "Get last non-null value in each group",
@@ -239,7 +261,7 @@ class BaseGroupBy(ABC):
     def last(
         self, numeric_only: bool = False, mask: Optional[ArrayType1D] = None
     ) -> pd.Series:
-        return self._grouper.last(self._obj, mask=mask)
+        return self._grouper.last(self._values_to_group, mask=mask)
 
     def nth(self, n: int) -> pd.Series:
         """
@@ -255,7 +277,7 @@ class BaseGroupBy(ABC):
         pd.Series
             Series with nth values
         """
-        result = self._grouper.nth(self._obj, n)
+        result = self._grouper.nth(self._values_to_group, n)
         return (
             result
             if isinstance(result, pd.Series)
@@ -546,6 +568,9 @@ class SeriesGroupBy(BaseGroupBy):
         # Create the proper instance
         return cls(obj, grouper=grouper)
 
+    @cached_property
+    def _values_to_group(self) -> pd.Series:
+        return self._obj
 
     def rolling(self, window: int, min_periods: Optional[int] = None):
         """
@@ -738,13 +763,37 @@ class DataFrameGroupBy(BaseGroupBy):
         self,
         obj: pd.DataFrame,
         grouper: GroupBy,
-        columns_used_as_keys: Optional[set] = None,
+        value_columns: Optional[List] = None,
     ):
         if not isinstance(obj, (pd.DataFrame, pl.DataFrame)):
             raise TypeError("obj must be a pandas DataFrame")
         self._obj = obj
         self._grouper = grouper
-        self.columns_used_as_keys = columns_used_as_keys or set()
+        if value_columns is not None:
+            for col in value_columns:
+                if col not in obj.columns:
+                    raise KeyError(f"Column '{col}' not found in DataFrame")
+            self.value_columns = value_columns
+        else:
+            self.value_columns = obj.columns.tolist()
+
+    @property
+    def _values_to_group(self) -> Union[pd.Series, Dict[Hashable, pd.Series]]:
+        """
+        Extract values to be grouped from the object.
+
+        This method should be implemented by subclasses to return the
+        appropriate values (Series or dict of Series) to be grouped.
+
+        Returns
+        -------
+        Union[pd.Series, Dict[Hashable, pd.Series]]
+            Values to group
+        """
+        return pd.DataFrame(
+            {col: self._obj[col] for col in self.value_columns},
+            copy=False,
+        )
 
     @classmethod
     def _from_by_keys(
@@ -849,7 +898,8 @@ class DataFrameGroupBy(BaseGroupBy):
         grouper = GroupBy(grouping_keys)
 
         # Create the proper instance
-        return cls(obj, grouper=grouper, columns_used_as_keys=columns_used_as_keys)
+        value_columns = [col for col in obj.columns if col not in columns_used_as_keys]
+        return cls(obj, grouper=grouper, value_columns=value_columns)
 
     def __getattr__(self, name: str):
         try:
@@ -871,16 +921,15 @@ class DataFrameGroupBy(BaseGroupBy):
         SeriesGroupBy or DataFrameGroupBy
             SeriesGroupBy if single column, DataFrameGroupBy if multiple columns
         """
-        subset = self._obj[key]
-        if isinstance(subset, pd.Series):
-            # Single column - return SeriesGroupBy
+        if isinstance(key, Hashable):
+            subset = self._obj[key]
             return SeriesGroupBy(subset, grouper=self._grouper)
         else:
             # Multiple columns - return DataFrameGroupBy with subset
             return DataFrameGroupBy(
-                subset,
+                self._obj,
                 grouper=self._grouper,
-                columns_used_as_keys=self.columns_used_as_keys,
+                value_columns=key,
             )
 
     def rolling(self, window: int, min_periods: Optional[int] = None):
