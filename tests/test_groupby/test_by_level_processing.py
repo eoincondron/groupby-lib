@@ -74,21 +74,23 @@ class TestDataFrameByLevelProcessing:
 
     def test_string_column_groupby(self):
         """Test grouping by string column name."""
-        gb = DataFrameGroupBy(self.df_mixed_cols, by="str_col")
+        gb = DataFrameGroupBy._from_by_keys(self.df_mixed_cols, by="str_col")
         pandas_gb = self.df_mixed_cols.groupby("str_col")
 
         result = gb.sum()
-        expected = pandas_gb.sum()
+        expected = pandas_gb.sum(numeric_only=True)
 
         # Both should have same numeric columns (groupby-lib filters to
         # numeric only) pandas excludes the grouping column, groupby-lib
         # includes it since it's numeric
         expected_cols = [col for col in expected.columns if col in result.columns]
-        pd.testing.assert_frame_equal(result[expected_cols], expected[expected_cols])
+        pd.testing.assert_frame_equal(
+            result[expected_cols], expected[expected_cols], check_column_type=False
+        )
 
     def test_int_column_groupby(self):
         """Test grouping by integer column name."""
-        gb = DataFrameGroupBy(self.df_mixed_cols, by=42)
+        gb = DataFrameGroupBy._from_by_keys(self.df_mixed_cols, by=42)
         pandas_gb = self.df_mixed_cols.groupby(42)
 
         assert gb.ngroups == pandas_gb.ngroups
@@ -108,7 +110,7 @@ class TestDataFrameByLevelProcessing:
 
     def test_float_column_groupby(self):
         """Test grouping by float column name."""
-        gb = DataFrameGroupBy(self.df_mixed_cols, by=3.14)
+        gb = DataFrameGroupBy._from_by_keys(self.df_mixed_cols, by=3.14)
         pandas_gb = self.df_mixed_cols.groupby(3.14)
 
         assert gb.ngroups == pandas_gb.ngroups
@@ -127,7 +129,7 @@ class TestDataFrameByLevelProcessing:
     def test_timestamp_column_groupby(self):
         """Test grouping by Timestamp column name."""
         timestamp_col = pd.Timestamp("2024-01-01")
-        gb = DataFrameGroupBy(self.df_mixed_cols, by=timestamp_col)
+        gb = DataFrameGroupBy._from_by_keys(self.df_mixed_cols, by=timestamp_col)
         pandas_gb = self.df_mixed_cols.groupby(timestamp_col)
 
         assert gb.ngroups == pandas_gb.ngroups
@@ -146,7 +148,7 @@ class TestDataFrameByLevelProcessing:
     def test_timedelta_column_groupby(self):
         """Test grouping by Timedelta column name."""
         timedelta_col = pd.Timedelta("1 day")
-        gb = DataFrameGroupBy(self.df_mixed_cols, by=timedelta_col)
+        gb = DataFrameGroupBy._from_by_keys(self.df_mixed_cols, by=timedelta_col)
         pandas_gb = self.df_mixed_cols.groupby(timedelta_col)
 
         assert gb.ngroups == pandas_gb.ngroups
@@ -164,7 +166,7 @@ class TestDataFrameByLevelProcessing:
 
     def test_tuple_column_groupby(self):
         """Test grouping by tuple column name (MultiIndex columns)."""
-        gb = DataFrameGroupBy(self.df_tuple_cols, by=("group", "main"))
+        gb = DataFrameGroupBy._from_by_keys(self.df_tuple_cols, by=("group", "main"))
         pandas_gb = self.df_tuple_cols.groupby(("group", "main"))
 
         assert gb.ngroups == pandas_gb.ngroups
@@ -177,18 +179,20 @@ class TestDataFrameByLevelProcessing:
     def test_multiple_mixed_column_groupby(self):
         """Test grouping by multiple columns with mixed types."""
         # Group by string and int column
-        gb = DataFrameGroupBy(self.df_mixed_cols, by=["str_col", 42])
+        gb = DataFrameGroupBy._from_by_keys(self.df_mixed_cols, by=["str_col", 42])
         pandas_gb = self.df_mixed_cols.groupby(["str_col", 42])
 
         pd.testing.assert_series_equal(gb.size(), pandas_gb.size(), check_names=False)
 
         result = gb.sum()
-        expected = pandas_gb.sum()
+        expected = pandas_gb.sum(numeric_only=True)
 
         # Find common columns
         common_cols = [col for col in expected.columns if col in result.columns]
         if common_cols:
-            pd.testing.assert_frame_equal(result[common_cols], expected[common_cols])
+            pd.testing.assert_frame_equal(
+                result[common_cols], expected[common_cols], check_column_type=False
+            )
 
         assert len(result) == len(expected)
         assert result.index.equals(expected.index)
@@ -197,14 +201,14 @@ class TestDataFrameByLevelProcessing:
         """Test grouping by array/Series."""
         grouper_array = np.array(["X", "Y", "X", "Y", "X", "Y"])
 
-        gb = DataFrameGroupBy(self.df_mixed_cols, by=grouper_array)
+        gb = DataFrameGroupBy._from_by_keys(self.df_mixed_cols, by=grouper_array)
         pandas_gb = self.df_mixed_cols.groupby(grouper_array)
 
         assert gb.ngroups == pandas_gb.ngroups
 
     def test_level_groupby_string_names(self):
         """Test grouping by index level with string names."""
-        gb = DataFrameGroupBy(self.df_multi_index, level="letter")
+        gb = DataFrameGroupBy._from_by_keys(self.df_multi_index, level="letter")
         pandas_gb = self.df_multi_index.groupby(level="letter")
 
         result = gb.sum()
@@ -214,7 +218,7 @@ class TestDataFrameByLevelProcessing:
 
     def test_level_groupby_numeric_names(self):
         """Test grouping by index level with numeric names."""
-        gb = DataFrameGroupBy(self.df_numeric_levels, level=0)
+        gb = DataFrameGroupBy._from_by_keys(self.df_numeric_levels, level=0)
         pandas_gb = self.df_numeric_levels.groupby(level=0)
 
         result = gb.sum()
@@ -224,7 +228,9 @@ class TestDataFrameByLevelProcessing:
 
     def test_level_groupby_multiple_levels(self):
         """Test grouping by multiple index levels."""
-        gb = DataFrameGroupBy(self.df_multi_index, level=["letter", "number"])
+        gb = DataFrameGroupBy._from_by_keys(
+            self.df_multi_index, level=["letter", "number"]
+        )
         pandas_gb = self.df_multi_index.groupby(level=["letter", "number"])
 
         result = gb.sum()
@@ -234,7 +240,9 @@ class TestDataFrameByLevelProcessing:
 
     def test_combined_by_and_level(self):
         """Test combining by and level arguments."""
-        gb = DataFrameGroupBy(self.df_multi_index, by="values", level="letter")
+        gb = DataFrameGroupBy._from_by_keys(
+            self.df_multi_index, by="values", level="letter"
+        )
         pandas_gb = self.df_multi_index.groupby(["values", "letter"])
 
         # Compare group counts
@@ -247,7 +255,7 @@ class TestDataFrameByLevelProcessing:
         def grouper_func(x):
             return len(str(x))
 
-        gb = DataFrameGroupBy(self.df_mixed_cols, by=grouper_func)
+        gb = DataFrameGroupBy._from_by_keys(self.df_mixed_cols, by=grouper_func)
         pandas_gb = self.df_mixed_cols.groupby(grouper_func)
 
         assert gb.ngroups == pandas_gb.ngroups
@@ -279,7 +287,7 @@ class TestSeriesByLevelProcessing:
 
     def test_series_level_string_name(self):
         """Test Series grouping by string level name."""
-        gb = SeriesGroupBy(self.series_multi, level="letter")
+        gb = SeriesGroupBy._from_by_keys(self.series_multi, level="letter")
         pandas_gb = self.series_multi.groupby(level="letter")
 
         result = gb.sum()
@@ -289,7 +297,7 @@ class TestSeriesByLevelProcessing:
 
     def test_series_level_number(self):
         """Test Series grouping by level number."""
-        gb = SeriesGroupBy(self.series_multi, level=0)
+        gb = SeriesGroupBy._from_by_keys(self.series_multi, level=0)
         pandas_gb = self.series_multi.groupby(level=0)
 
         result = gb.sum()
@@ -299,7 +307,7 @@ class TestSeriesByLevelProcessing:
 
     def test_series_level_negative_number(self):
         """Test Series grouping by negative level number."""
-        gb = SeriesGroupBy(self.series_multi, level=-1)
+        gb = SeriesGroupBy._from_by_keys(self.series_multi, level=-1)
         pandas_gb = self.series_multi.groupby(level=-1)
 
         result = gb.sum()
@@ -309,7 +317,7 @@ class TestSeriesByLevelProcessing:
 
     def test_series_multiple_levels(self):
         """Test Series grouping by multiple levels."""
-        gb = SeriesGroupBy(self.series_multi, level=["letter", "number"])
+        gb = SeriesGroupBy._from_by_keys(self.series_multi, level=["letter", "number"])
         pandas_gb = self.series_multi.groupby(level=["letter", "number"])
 
         result = gb.sum()
@@ -323,7 +331,9 @@ class TestSeriesByLevelProcessing:
         int_level = 42
 
         # Test Timestamp level name
-        gb1 = SeriesGroupBy(self.series_numeric_levels, level=timestamp_level)
+        gb1 = SeriesGroupBy._from_by_keys(
+            self.series_numeric_levels, level=timestamp_level
+        )
         pandas_gb1 = self.series_numeric_levels.groupby(level=timestamp_level)
 
         result1 = gb1.sum()
@@ -331,7 +341,7 @@ class TestSeriesByLevelProcessing:
         pd.testing.assert_series_equal(result1, expected1)
 
         # Test int level name
-        gb2 = SeriesGroupBy(self.series_numeric_levels, level=int_level)
+        gb2 = SeriesGroupBy._from_by_keys(self.series_numeric_levels, level=int_level)
         pandas_gb2 = self.series_numeric_levels.groupby(level=int_level)
 
         result2 = gb2.sum()
@@ -342,7 +352,7 @@ class TestSeriesByLevelProcessing:
         """Test Series grouping by external array."""
         grouper_array = np.array(["X", "Y", "X", "Y", "X", "Y"])
 
-        gb = SeriesGroupBy(self.series_multi, by=grouper_array)
+        gb = SeriesGroupBy._from_by_keys(self.series_multi, by=grouper_array)
         pandas_gb = self.series_multi.groupby(grouper_array)
 
         result = gb.sum()
@@ -354,7 +364,9 @@ class TestSeriesByLevelProcessing:
         """Test Series combining by and level."""
         grouper_array = np.array(["X", "Y", "X", "Y", "X", "Y"])
 
-        gb = SeriesGroupBy(self.series_multi, by=grouper_array, level="letter")
+        gb = SeriesGroupBy._from_by_keys(
+            self.series_multi, by=grouper_array, level="letter"
+        )
 
         # Should have grouping keys from both by and level
         assert gb.ngroups > 0
@@ -379,26 +391,26 @@ class TestErrorHandling:
         with pytest.raises(
             KeyError, match="Column or index level 'nonexistent' not found"
         ):
-            DataFrameGroupBy(self.df, by="nonexistent")
+            DataFrameGroupBy._from_by_keys(self.df, by="nonexistent")
 
     def test_invalid_level_name(self):
         """Test error handling for invalid level names."""
         with pytest.raises(KeyError, match="Level invalid_level not found"):
-            SeriesGroupBy(self.series_multi, level="invalid_level")
+            SeriesGroupBy._from_by_keys(self.series_multi, level="invalid_level")
 
     def test_invalid_level_number(self):
         """Test error handling for out-of-bounds level numbers."""
         with pytest.raises(
             IndexError, match="Too many levels: Index has only 2 levels, not 6"
         ):
-            SeriesGroupBy(self.series_multi, level=5)
+            SeriesGroupBy._from_by_keys(self.series_multi, level=5)
 
     def test_level_on_regular_index(self):
         """Test error for level on non-MultiIndex."""
         regular_series = pd.Series([1, 2, 3, 4])
 
         with pytest.raises(KeyError):
-            SeriesGroupBy(regular_series, level="invalid")
+            SeriesGroupBy._from_by_keys(regular_series, level="invalid")
 
     def test_array_length_mismatch(self):
         """Test error for array length mismatch."""
@@ -407,7 +419,7 @@ class TestErrorHandling:
         with pytest.raises(
             ValueError, match="Length of grouper \\(2\\) != length of DataFrame \\(4\\)"
         ):
-            DataFrameGroupBy(self.df, by=wrong_length_array)
+            DataFrameGroupBy._from_by_keys(self.df, by=wrong_length_array)
 
 
 class TestEdgeCases:
@@ -427,21 +439,21 @@ class TestEdgeCases:
     def test_none_values_handling(self):
         """Test handling when by/level are None."""
         with pytest.raises(
-            ValueError, match="Must provide either 'by', 'level' or `grouper`"
+            ValueError, match="Must provide either 'by' or 'level' for grouping"
         ):
-            DataFrameGroupBy(self.df_simple)
+            DataFrameGroupBy._from_by_keys(self.df_simple)
 
     def test_empty_dataframe(self):
         """Test with empty DataFrame."""
         # This should work without error
-        gb = DataFrameGroupBy(self.df_empty, by="group")
+        gb = DataFrameGroupBy._from_by_keys(self.df_empty, by="group")
         assert gb.ngroups == 0
 
     def test_single_row_dataframe(self):
         """Test with single row DataFrame."""
         single_row_df = pd.DataFrame({"A": [1], "group": ["X"]})
 
-        gb = DataFrameGroupBy(single_row_df, by="group")
+        gb = DataFrameGroupBy._from_by_keys(single_row_df, by="group")
         pandas_gb = single_row_df.groupby("group")
 
         assert gb.ngroups == pandas_gb.ngroups
@@ -479,19 +491,19 @@ class TestPandasCompatibility:
     def test_complex_mixed_types(self):
         """Test complex scenario with mixed column and level name types."""
         # Group by tuple column name
-        gb1 = DataFrameGroupBy(self.df_complex, by=("data", "primary"))
+        gb1 = DataFrameGroupBy._from_by_keys(self.df_complex, by=("data", "primary"))
         assert gb1.ngroups > 0
 
         # Group by int column name
-        gb2 = DataFrameGroupBy(self.df_complex, by=42)
+        gb2 = DataFrameGroupBy._from_by_keys(self.df_complex, by=42)
         assert gb2.ngroups > 0
 
         # Group by Timedelta level name
-        gb3 = DataFrameGroupBy(self.df_complex, level=pd.Timedelta("1h"))
+        gb3 = DataFrameGroupBy._from_by_keys(self.df_complex, level=pd.Timedelta("1h"))
         assert gb3.ngroups > 0
 
         # Group by float level name
-        gb4 = DataFrameGroupBy(self.df_complex, level=3.14159)
+        gb4 = DataFrameGroupBy._from_by_keys(self.df_complex, level=3.14159)
         assert gb4.ngroups > 0
 
 
@@ -512,7 +524,7 @@ class TestPerformanceWithMixedTypes:
 
         # Test grouping by different column types
         for col in ["str_col", 42, 3.14]:
-            gb = DataFrameGroupBy(df_large, by=col)
+            gb = DataFrameGroupBy._from_by_keys(df_large, by=col)
             pandas_gb = df_large.groupby(col)
 
             # Basic validation

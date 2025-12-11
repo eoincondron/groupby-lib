@@ -120,73 +120,8 @@ class BaseGroupBy(ABC):
     This class contains common functionality shared between SeriesGroupBy
     and DataFrameGroupBy classes.
     """
-
-    def __init__(
-        self,
-        obj: Union[pd.Series, pd.DataFrame],
-        by=None,
-        level=None,
-        grouper: Optional[GroupBy] = None,
-    ):
-        if by is None and level is None and grouper is None:
-            raise ValueError(
-                "Must provide either 'by', 'level' or `grouper` for grouping"
-            )
-
-        self._obj = obj
-        self._by = by
-        self._level = level
-
-        if grouper is not None:
-            self._grouper = grouper
-            return
-
-        # Use specialized method to process by/level arguments
-        grouping_keys = self._process_by_argument(by, level)
-        self._grouper = GroupBy(grouping_keys)
-
-    @abstractmethod
-    def _process_by_argument(self, by, level):
-        """
-        Process by and level arguments into a list of grouping keys.
-
-        This method should be implemented by subclasses to handle their specific
-        column/index naming conventions and data structures.
-
-        Parameters
-        ----------
-        by : various types
-            Grouping key(s), can be column names, arrays, callables, etc.
-        level : various types
-            Index level name(s) or number(s) for MultiIndex grouping
-
-        Returns
-        -------
-        list
-            List of grouping arrays/keys for GroupBy constructor
-        """
-        pass
-
-    def _resolve_index_levels(self, level):
-        """
-        Resolve index level references to actual level values.
-
-        Parameters
-        ----------
-        level : various types
-            Level specification (name, number, list of names/numbers)
-
-        Returns
-        -------
-        list
-            List of index level value arrays
-        """
-        if not isinstance(level, (list, tuple)):
-            levels = [level]
-        else:
-            levels = level
-
-        return [self._obj.index.get_level_values(level) for level in levels]
+    _grouper: GroupBy
+    _obj: Union[pd.Series, pd.DataFrame]
 
     @property
     def grouper(self) -> GroupBy:
@@ -526,12 +461,8 @@ class SeriesGroupBy(BaseGroupBy):
     ----------
     obj : pd.Series
         The pandas Series to group
-    by : array-like, optional
-        Grouping key(s), can be any type acceptable to core.GroupBy constructor.
-        If None, must specify level.
-    level : int, str, or sequence, optional
-        If the Series has a MultiIndex, group by specific level(s) of the index.
-        Can be level number(s) or name(s). If None, must specify by.
+    grouper : GroupBy
+        The GroupBy engine instance
 
     Examples
     --------
@@ -540,7 +471,7 @@ class SeriesGroupBy(BaseGroupBy):
     >>> from groupby_lib.groupby import SeriesGroupBy
     >>> s = pd.Series([1, 2, 3, 4, 5, 6])
     >>> groups = pd.Series(['A', 'B', 'A', 'B', 'A', 'B'])
-    >>> gb = SeriesGroupBy(s, by=groups)
+    >>> gb = SeriesGroupBy._from_by_keys(s, by=groups)
     >>> gb.sum()
     A    9
     B   12
@@ -549,40 +480,46 @@ class SeriesGroupBy(BaseGroupBy):
     Level-based grouping:
     >>> idx = pd.MultiIndex.from_tuples(\n    ...     [('A', 1), ('A', 2), ('B', 1)],\n    ...     names=['letter', 'num'])
     >>> s = pd.Series([10, 20, 30], index=idx)
-    >>> gb = SeriesGroupBy(s, level='letter')
+    >>> gb = SeriesGroupBy._from_by_keys(s, level='letter')
     >>> gb.sum()
     A    30
     B    30
     dtype: int64
     """
 
-    def __init__(
-        self, obj: pd.Series, by=None, level=None, grouper: Optional[GroupBy] = None
-    ):
-        if not isinstance(obj, pd.Series):
+    def __init__(self, obj: pd.Series, grouper: GroupBy):
+        if not isinstance(obj, (pd.Series, pl.Series)):
             raise TypeError("obj must be a pandas Series")
-        super().__init__(obj, by=by, level=level, grouper=grouper)
+        self._obj = obj
+        self._grouper = grouper
 
-    def _process_by_argument(self, by, level):
+    @classmethod
+    def _from_by_keys(cls, obj: pd.Series, by=None, level=None) -> "SeriesGroupBy":
         """
-        Process by and level arguments for SeriesGroupBy.
+        Create a SeriesGroupBy instance from by and level arguments.
 
-        For Series, we handle:
-        - by: arrays, lists, callables, or other Series
-        - level: index level names or numbers for MultiIndex
+        This is the constructor that should be used when creating a SeriesGroupBy
+        from by/level arguments, as is done in the monkeypatch methods.
 
         Parameters
         ----------
-        by : various types
-            Grouping key(s), can be arrays, Series, callables, etc.
-        level : various types
-            Index level name(s) or number(s) for MultiIndex grouping
+        obj : pd.Series
+            The pandas Series to group
+        by : array-like, optional
+            Grouping key(s), can be any type acceptable to core.GroupBy constructor.
+            If None, must specify level.
+        level : int, str, or sequence, optional
+            If the Series has a MultiIndex, group by specific level(s) of the index.
+            Can be level number(s) or name(s). If None, must specify by.
 
         Returns
         -------
-        list
-            List of grouping arrays/keys for GroupBy constructor
+        SeriesGroupBy
+            A SeriesGroupBy instance with the constructed grouper
         """
+        if by is None and level is None:
+            raise ValueError("Must provide either 'by' or 'level' for grouping")
+
         grouping_keys = []
 
         # Process by argument first (to match pandas order)
@@ -594,10 +531,21 @@ class SeriesGroupBy(BaseGroupBy):
 
         # Process level argument
         if level is not None:
-            level_keys = self._resolve_index_levels(level)
-            grouping_keys.extend(level_keys)
+            # Resolve index levels inline
+            if not isinstance(level, (list, tuple)):
+                levels = [level]
+            else:
+                levels = level
 
-        return grouping_keys
+            for lv in levels:
+                grouping_keys.append(obj.index.get_level_values(lv))
+
+        # Create the grouper
+        grouper = GroupBy(grouping_keys)
+
+        # Create the proper instance
+        return cls(obj, grouper=grouper)
+
 
     def rolling(self, window: int, min_periods: Optional[int] = None):
         """
@@ -767,12 +715,10 @@ class DataFrameGroupBy(BaseGroupBy):
     ----------
     obj : pd.DataFrame
         The pandas DataFrame to group
-    by : array-like, optional
-        Grouping key(s), can be any type acceptable to core.GroupBy constructor.
-        If None, must specify level.
-    level : int, str, or sequence, optional
-        If the DataFrame has a MultiIndex, group by specific level(s) of the index.
-        Can be level number(s) or name(s). If None, must specify by.
+    grouper : GroupBy
+        The GroupBy engine instance
+    columns_used_as_keys : set, optional
+        Set of column names that were used as grouping keys
 
     Examples
     --------
@@ -781,7 +727,7 @@ class DataFrameGroupBy(BaseGroupBy):
     >>> from groupby_lib.groupby import DataFrameGroupBy
     >>> df = pd.DataFrame({'A': [1, 2, 3, 4], 'B': [10, 20, 30, 40]})
     >>> groups = pd.Series(['X', 'Y', 'X', 'Y'])
-    >>> gb = DataFrameGroupBy(df, by=groups)
+    >>> gb = DataFrameGroupBy._from_by_keys(df, by=groups)
     >>> gb.sum()
         A   B
     X   4  40
@@ -789,114 +735,121 @@ class DataFrameGroupBy(BaseGroupBy):
     """
 
     def __init__(
-        self, obj: pd.DataFrame, by=None, level=None, grouper: Optional[GroupBy] = None
+        self,
+        obj: pd.DataFrame,
+        grouper: GroupBy,
+        columns_used_as_keys: Optional[set] = None,
     ):
         if not isinstance(obj, (pd.DataFrame, pl.DataFrame)):
             raise TypeError("obj must be a pandas DataFrame")
-        super().__init__(obj, by=by, level=level, grouper=grouper)
+        self._obj = obj
+        self._grouper = grouper
+        self.columns_used_as_keys = columns_used_as_keys or set()
 
-    def _process_by_argument(self, by, level):
+    @classmethod
+    def _from_by_keys(
+        cls, obj: Union[pd.DataFrame, pl.DataFrame], by=None, level=None
+    ) -> "DataFrameGroupBy":
         """
-        Process by and level arguments for DataFrameGroupBy.
+        Create a DataFrameGroupBy instance from by and level arguments.
 
-        For DataFrame, we handle:
-        - by: column names (any hashable type), arrays, Series, callables
-        - level: index level names or numbers for MultiIndex
-        - Proper resolution of column names including non-string types
+        This is the constructor that should be used when creating a DataFrameGroupBy
+        from by/level arguments, as is done in the monkeypatch methods.
 
         Parameters
         ----------
-        by : various types
-            Grouping key(s), can be column names, arrays, Series, callables, etc.
-        level : various types
-            Index level name(s) or number(s) for MultiIndex grouping
+        obj : pd.DataFrame, pl.DataFrame
+            The DataFrame to group
+        by : array-like, optional
+            Grouping key(s), can be any type acceptable to core.GroupBy constructor.
+            If None, must specify level.
+        level : int, str, or sequence, optional
+            If the DataFrame has a MultiIndex, group by specific level(s) of the index.
+            Can be level number(s) or name(s). If None, must specify by.
 
         Returns
         -------
-        list
-            List of grouping arrays/keys for GroupBy constructor
+        DataFrameGroupBy
+            A DataFrameGroupBy instance with the constructed grouper
         """
+        if not isinstance(obj, (pd.DataFrame, pl.DataFrame)):
+            raise TypeError("obj must be a pandas DataFrame")
+        
+        if by is None and level is None:
+            raise ValueError("Must provide either 'by' or 'level' for grouping")
+
         grouping_keys = []
+        columns_used_as_keys = set()
 
         # Process by argument first (to match pandas order)
         if by is not None:
-            by_keys = self._resolve_by_keys(by)
-            grouping_keys.extend(by_keys)
+            # Resolve by keys inline
+            # Special case: if by is a tuple and it's a valid column name,
+            # treat as single key
+            if isinstance(by, tuple) and by in obj.columns:
+                by = [by]
+            elif not isinstance(by, (list, tuple)):
+                by = [by]
+
+            for key in by:
+                # Check for array-like objects first (before checking columns,
+                # since arrays aren't hashable)
+                if hasattr(key, "__iter__") and not isinstance(
+                    key, (str, bytes, tuple)
+                ):
+                    # Array-like object (not string or tuple) - use directly
+                    if hasattr(key, "__len__") and len(key) != len(obj):
+                        raise ValueError(
+                            f"Length of grouper ({len(key)}) != "
+                            f"length of DataFrame ({len(obj)})"
+                        )
+                    grouping_keys.append(key)
+
+                elif callable(key):
+                    # Callable - apply to index
+                    grouping_keys.append(obj.index.map(key))
+
+                else:
+                    # Try to use as column name (including tuple column names)
+                    try:
+                        if key in obj.columns:
+                            grouping_keys.append(obj[key])
+                            columns_used_as_keys.add(key)
+                        elif hasattr(obj.index, "names") and key in obj.index.names:
+                            # It's an index level name
+                            if isinstance(obj.index, pd.MultiIndex):
+                                level_idx = obj.index.names.index(key)
+                                grouping_keys.append(
+                                    obj.index.get_level_values(level_idx)
+                                )
+                            else:
+                                # Single level index
+                                grouping_keys.append(obj.index)
+                        else:
+                            raise KeyError(f"Column or index level '{key}' not found")
+                    except TypeError:
+                        # Unhashable type - treat as array-like if it has proper length
+                        if hasattr(key, "__len__") and len(key) == len(obj):
+                            grouping_keys.append(key)
+                        else:
+                            raise KeyError(f"Invalid grouping key: {key}")
 
         # Process level argument
         if level is not None:
-            level_keys = self._resolve_index_levels(level)
-            grouping_keys.extend(level_keys)
-
-        return grouping_keys
-
-    def _resolve_by_keys(self, by):
-        """
-        Resolve by keys for DataFrame, handling column name resolution.
-
-        Parameters
-        ----------
-        by : various types
-            Single key or list of keys to group by
-
-        Returns
-        -------
-        list
-            List of resolved grouping arrays
-        """
-        # Special case: if by is a tuple and it's a valid column name,
-        # treat as single key
-        if isinstance(by, tuple) and by in self._obj.columns:
-            by = [by]
-        elif not isinstance(by, (list, tuple)):
-            by = [by]
-
-        resolved_keys = []
-
-        for key in by:
-            # Check for array-like objects first (before checking columns,
-            # since arrays aren't hashable)
-            if hasattr(key, "__iter__") and not isinstance(key, (str, bytes, tuple)):
-                # Array-like object (not string or tuple) - use directly
-                if hasattr(key, "__len__") and len(key) != len(self._obj):
-                    raise ValueError(
-                        f"Length of grouper ({len(key)}) != "
-                        f"length of DataFrame ({len(self._obj)})"
-                    )
-                resolved_keys.append(key)
-
-            elif callable(key):
-                # Callable - apply to index
-                resolved_keys.append(self._obj.index.map(key))
-
+            # Resolve index levels inline
+            if not isinstance(level, (list, tuple)):
+                levels = [level]
             else:
-                # Try to use as column name (including tuple column names)
-                try:
-                    if key in self._obj.columns:
-                        resolved_keys.append(self._obj[key])
-                    elif (
-                        hasattr(self._obj.index, "names")
-                        and key in self._obj.index.names
-                    ):
-                        # It's an index level name
-                        if isinstance(self._obj.index, pd.MultiIndex):
-                            level_idx = self._obj.index.names.index(key)
-                            resolved_keys.append(
-                                self._obj.index.get_level_values(level_idx)
-                            )
-                        else:
-                            # Single level index
-                            resolved_keys.append(self._obj.index)
-                    else:
-                        raise KeyError(f"Column or index level '{key}' not found")
-                except TypeError:
-                    # Unhashable type - treat as array-like if it has proper length
-                    if hasattr(key, "__len__") and len(key) == len(self._obj):
-                        resolved_keys.append(key)
-                    else:
-                        raise KeyError(f"Invalid grouping key: {key}")
+                levels = level
 
-        return resolved_keys
+            for lv in levels:
+                grouping_keys.append(obj.index.get_level_values(lv))
+
+        # Create the grouper
+        grouper = GroupBy(grouping_keys)
+
+        # Create the proper instance
+        return cls(obj, grouper=grouper, columns_used_as_keys=columns_used_as_keys)
 
     def __getattr__(self, name: str):
         try:
@@ -924,7 +877,11 @@ class DataFrameGroupBy(BaseGroupBy):
             return SeriesGroupBy(subset, grouper=self._grouper)
         else:
             # Multiple columns - return DataFrameGroupBy with subset
-            return DataFrameGroupBy(subset, grouper=self._grouper)
+            return DataFrameGroupBy(
+                subset,
+                grouper=self._grouper,
+                columns_used_as_keys=self.columns_used_as_keys,
+            )
 
     def rolling(self, window: int, min_periods: Optional[int] = None):
         """

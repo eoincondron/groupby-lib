@@ -58,7 +58,7 @@ def groupby_fast_series(
     B   12
     dtype: int64
     """
-    return SeriesGroupBy(self, by=by, level=level)
+    return SeriesGroupBy._from_by_keys(self, by=by, level=level)
 
 
 def groupby_fast_dataframe(
@@ -100,7 +100,7 @@ def groupby_fast_dataframe(
     X  4  40
     Y  6  60
     """
-    return DataFrameGroupBy(self, by=by, level=level)
+    return DataFrameGroupBy._from_by_keys(self, by=by, level=level)
 
 
 def install_groupby_fast(patch_name: str = "groupby_fast"):
