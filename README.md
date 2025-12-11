@@ -2,23 +2,55 @@
 
 A high-performance extension package for pandas that provides fast groupby operations using NumPy and Numba acceleration intended for large data sets. Performance improvements increase as data is scaled up (see benchmarking below). It also provides a more flexible API and convenience methods in the group-by space like adding margins and calculating ratios. 
 
+## Key Features**
+- Over 10x faster when grouping with categorical keys (5x faster than Polars)
+- ~3-4x faster group-by reductions when grouping by numerical keys
+- Support inline filtering with Boolean masks to avoid expensive copies. This also facilitates re-use of GroupBy objects (whose construction is the most expensive part)
+- 40x faster rolling stats/EMAs (6x faster than Polars)
+- Compatible/Interoperable with Numpy/Pandas/Polars, including pyarrow-backed Pandas objects (even chunked arrays). 
+- Less verbosity, especially as compared with Polars
+- Highly flexible inputs - any 1D object, collection of 1D objects (`list`, `dict`, etc) or 2D object from Pandas/Polars/Numpy accepted both for group keys and values to be aggregated
+- Two modes of use - `GroupBy` class and `(Series/DataFrame).groupby_fast` monkey patch
+- Optional margins for linear reductions - particularly useful with multi-key groupings
+- Conveniences methods like `GroupBy.ratio/subset_ratio/density`
+- 4x faster crosstabs (8x faster when margins are requested)
+
+**Performance comparisons assuming multiple cores and large data
+
 ## Overview
 
 `groupby-lib` enhances Pandas groupby functionality with optimized implementations that leverage NumPy arrays and Numba's just-in-time compilation for significant performance improvements. The package is designed to work seamlessly with pandas DataFrames and Series while providing additional flexibility for various array types.
 
-
+## Set Up 
+![alt text](docs/images/set-up.png)
 ## Faster GroupBy Operations
 Optimized group-by operations, particularly with categorical data (uses the existing factorization) and with multi-threading on large datasets across both row and columns axes. 
 ***NB**: the benchmarking below is after all `numba` just-in-time compilations have been completed.*
-![alt text](docs/images/gb-comparison.png)
+![alt text](docs/images/gb-comparison-1.png)
 
-## Inline Filtering of Groupby Operations
+### The `mask` argument - inline filtering
  Inline filtering such that Series/DataFrames do not have to be filtered before group-by operations. This saves time and memory directly, and also promotes re-use of `GroupBy` objects which boosts performance dramatically (the majority of run-time in most group-by ops is in the factorization step)
 
- Pass a Boolean mask, slice or fancy-indexer to the group-by method call:
-![alt text](docs/images/mask-demo.png)
+![alt text](docs/images/gb-comparison-mask.png)
 
-- **Flexible Input Types**: Support for NumPy arrays, pandas Series/DataFrames backed by NumPy or Arrow, and Polars Series/DataFrames. Here are some examples which are not exhaustive
+### Multi-key and Margins
+![alt text](docs/images/multi-key.png)
+
+### Rolling aggregations and EMAs
+Optionally return results aligned to inputs (fastest) or sorted by groups first á la `pandas` (slower)
+![alt text](docs/images/gb-comparison-rolling.png)
+
+![alt text](docs/images/EMAs.png)
+
+### Quantiles
+![alt text](docs/images/quantiles.png)
+
+### Crosstabs / Pivots 
+(`DataFrame.pivot_table_fast` coming soon)
+![alt text](docs/images/crosstabs.png)
+
+### **Flexible Input Types**: 
+Support for NumPy arrays, pandas Series/DataFrames backed by NumPy or Arrow, and Polars Series/DataFrames. Here are some examples which are not exhaustive
 
 
 ```python
@@ -60,8 +92,7 @@ GroupBy(key_list).size()
 ## Installation
 
 ```bash
-# Install dependencies
-conda install groupby-lib
+pip install groupby-lib
 ```
 
 ## The GroupBy Class
@@ -80,7 +111,7 @@ The GroupBy class supports various aggregation/selection functions:
  - `var()/std()` - Variance/Std. Dev. of values in each group
 - `count()` - Count of non-null values in each group
 - `size()` - Total count of values in each group (including nulls)
-- `median()/quantile` - Median value/quantiles in each group
+- `median()/quantile()` - Median value/quantiles in each group
 - `head()/tail()` - The top/bottom N rows/elements in each group
 - `first()/last()` - The first/last non-null elements in each group
 - `nth()` - The nth row/element in each group
@@ -88,7 +119,8 @@ The GroupBy class supports various aggregation/selection functions:
 - `diff()` - Diff elements group-wise
 - `rolling_[min()/max()/sum()/mean()]` - rolling aggregations
 - `cum[min()/max()/count()/sum()]` - cumulative aggregations
-- `apply` - Apply any numpy compatbile function returning a scalar
+- `apply()` - Apply any numpy compatbile function returning a scalar
+- `ema()` - Exponetially weighted moving averages, optionally based on times
 
 ### Working with Pandas Data
 
@@ -272,7 +304,6 @@ groupby-lib provides significant performance improvements for large datasets:
 - numba
 - pyarrow
 - polars
-- scipy (optional for `GroupScatter` support)
 
 ## Development
 
