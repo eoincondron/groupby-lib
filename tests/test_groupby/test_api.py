@@ -9,7 +9,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from groupby_lib.groupby import DataFrameGroupBy, SeriesGroupBy
+from groupby_lib.groupby import DataFrameGroupBy, SeriesGroupBy, install_groupby_fast
+
+# Install groupby_fast for all tests
+install_groupby_fast()
 
 
 class TestSeriesGroupBy:
@@ -31,7 +34,7 @@ class TestSeriesGroupBy:
 
     def test_basic_grouping(self):
         """Test basic grouping with by parameter."""
-        gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
+        gb = self.data.groupby_fast(by=self.groups)
         pandas_gb = self.data.groupby(self.groups)
 
         assert gb.ngroups == pandas_gb.ngroups
@@ -39,7 +42,7 @@ class TestSeriesGroupBy:
 
     def test_sum_aggregation(self):
         """Test sum aggregation matches pandas."""
-        gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
+        gb = self.data.groupby_fast(by=self.groups)
         pandas_gb = self.data.groupby(self.groups)
 
         result = gb.sum()
@@ -48,7 +51,7 @@ class TestSeriesGroupBy:
 
     def test_mean_aggregation(self):
         """Test mean aggregation matches pandas."""
-        gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
+        gb = self.data.groupby_fast(by=self.groups)
         pandas_gb = self.data.groupby(self.groups)
 
         result = gb.mean()
@@ -58,7 +61,7 @@ class TestSeriesGroupBy:
 
     def test_count_aggregation(self):
         """Test count aggregation matches pandas."""
-        gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
+        gb = self.data.groupby_fast(by=self.groups)
         pandas_gb = self.data.groupby(self.groups)
 
         result = gb.count()
@@ -68,7 +71,7 @@ class TestSeriesGroupBy:
 
     def test_std_var_aggregation(self):
         """Test std and var aggregations with ddof parameter."""
-        gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
+        gb = self.data.groupby_fast(by=self.groups)
         pandas_gb = self.data.groupby(self.groups)
 
         # Test std
@@ -83,7 +86,7 @@ class TestSeriesGroupBy:
 
     def test_min_max_aggregation(self):
         """Test min and max aggregations."""
-        gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
+        gb = self.data.groupby_fast(by=self.groups)
         pandas_gb = self.data.groupby(self.groups)
 
         # Test min
@@ -98,7 +101,7 @@ class TestSeriesGroupBy:
 
     def test_cumulative_operations(self):
         """Test cumulative operations."""
-        gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
+        gb = self.data.groupby_fast(by=self.groups)
         pandas_gb = self.data.groupby(self.groups)
 
         # Test cumsum
@@ -123,7 +126,7 @@ class TestSeriesGroupBy:
 
     def test_level_grouping_by_number(self):
         """Test grouping by level number."""
-        gb = SeriesGroupBy._from_by_keys(self.multi_data, level=0)
+        gb = self.multi_data.groupby_fast(level=0)
         pandas_gb = self.multi_data.groupby(level=0)
 
         result = gb.sum()
@@ -133,7 +136,7 @@ class TestSeriesGroupBy:
 
     def test_level_grouping_by_name(self):
         """Test grouping by level name."""
-        gb = SeriesGroupBy._from_by_keys(self.multi_data, level="letter")
+        gb = self.multi_data.groupby_fast(level="letter")
         pandas_gb = self.multi_data.groupby(level="letter")
 
         result = gb.sum()
@@ -143,7 +146,7 @@ class TestSeriesGroupBy:
 
     def test_multiple_level_grouping(self):
         """Test grouping by multiple levels."""
-        gb = SeriesGroupBy._from_by_keys(self.multi_data, level=[0, 1])
+        gb = self.multi_data.groupby_fast(level=[0, 1])
         pandas_gb = self.multi_data.groupby(level=[0, 1])
 
         result = gb.sum()
@@ -157,7 +160,7 @@ class TestSeriesGroupBy:
             ["X", "Y", "X", "Y", "X", "Y"], index=self.multi_data.index, name="extra"
         )
 
-        gb = SeriesGroupBy._from_by_keys(self.multi_data, by=extra_grouper, level=0)
+        gb = self.multi_data.groupby_fast(by=extra_grouper, level=0)
         pandas_gb = self.multi_data.groupby(
             [extra_grouper, self.multi_data.index.get_level_values(0)]
         )
@@ -171,7 +174,7 @@ class TestSeriesGroupBy:
         """Test mask parameter functionality."""
         mask = np.array([True, False, True, True, False, True])
 
-        gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
+        gb = self.data.groupby_fast(by=self.groups)
         result = gb.sum(mask=mask)
 
         # Compare to manual calculation
@@ -183,7 +186,7 @@ class TestSeriesGroupBy:
 
     def test_first_last_operations(self):
         """Test first and last operations."""
-        gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
+        gb = self.data.groupby_fast(by=self.groups)
         pandas_gb = self.data.groupby(self.groups)
 
         # Test first
@@ -198,7 +201,7 @@ class TestSeriesGroupBy:
 
     def test_size_operation(self):
         """Test size operation."""
-        gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
+        gb = self.data.groupby_fast(by=self.groups)
         pandas_gb = self.data.groupby(self.groups)
 
         result = gb.size()
@@ -208,7 +211,7 @@ class TestSeriesGroupBy:
 
     def test_margins_functionality(self):
         """Test margins parameter in aggregation methods."""
-        gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
+        gb = self.data.groupby_fast(by=self.groups)
 
         # Test sum with margins
         result_with_margins = gb.sum(margins=True)
@@ -227,7 +230,7 @@ class TestSeriesGroupBy:
 
     def test_rolling_functionality(self):
         """Test rolling window operations."""
-        gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
+        gb = self.data.groupby_fast(by=self.groups)
         rolling_gb = gb.rolling(window=2)
 
         # Test rolling sum
@@ -251,7 +254,7 @@ class TestSeriesGroupBy:
         data_with_nulls = pd.Series([10, np.nan, 30, 40, np.nan, 60], name="values")
         groups_with_nulls = pd.Series(["A", "B", "A", "B", "A", "B"], name="groups")
 
-        gb = SeriesGroupBy._from_by_keys(data_with_nulls, by=groups_with_nulls)
+        gb = data_with_nulls.groupby_fast(by=groups_with_nulls)
         pandas_gb = data_with_nulls.groupby(groups_with_nulls)
 
         # Test count (excludes nulls)
@@ -278,7 +281,7 @@ class TestSeriesGroupBy:
 
     def test_repr(self):
         """Test string representation."""
-        gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
+        gb = self.data.groupby_fast(by=self.groups)
         repr_str = repr(gb)
         assert "SeriesGroupBy" in repr_str
         assert "ngroups=2" in repr_str
@@ -300,7 +303,7 @@ class TestDataFrameGroupBy:
 
     def test_basic_dataframe_grouping(self):
         """Test basic DataFrame grouping."""
-        gb = DataFrameGroupBy._from_by_keys(self.df, by=self.groups)
+        gb = self.df.groupby_fast(by=self.groups)
         pandas_gb = self.df.groupby(self.groups)
 
         assert gb.ngroups == pandas_gb.ngroups
@@ -308,7 +311,7 @@ class TestDataFrameGroupBy:
 
     def test_dataframe_sum_aggregation(self):
         """Test DataFrame sum aggregation."""
-        gb = DataFrameGroupBy._from_by_keys(self.df, by=self.groups)
+        gb = self.df.groupby_fast(by=self.groups)
         pandas_gb = self.df.groupby(self.groups)
 
         result = gb.sum()
@@ -318,7 +321,7 @@ class TestDataFrameGroupBy:
 
     def test_dataframe_aggregations(self):
         """Test various DataFrame aggregations."""
-        gb = DataFrameGroupBy._from_by_keys(self.df, by=self.groups)
+        gb = self.df.groupby_fast(by=self.groups)
         pandas_gb = self.df.groupby(self.groups)
 
         methods = ["mean", "min", "max", "count", "std", "var"]
@@ -330,7 +333,7 @@ class TestDataFrameGroupBy:
 
     def test_getitem_single_column(self):
         """Test __getitem__ with single column selection."""
-        gb = DataFrameGroupBy._from_by_keys(self.df, by=self.groups)
+        gb = self.df.groupby_fast(by=self.groups)
 
         # Single column should return SeriesGroupBy
         single_col_gb = gb["A"]
@@ -346,7 +349,7 @@ class TestDataFrameGroupBy:
 
     def test_getitem_multiple_columns(self):
         """Test __getitem__ with multiple column selection."""
-        gb = DataFrameGroupBy._from_by_keys(self.df, by=self.groups)
+        gb = self.df.groupby_fast(by=self.groups)
 
         # Multiple columns should return DataFrameGroupBy
         multi_col_gb = gb[["A", "B"]]
@@ -360,9 +363,20 @@ class TestDataFrameGroupBy:
         expected = pandas_multi.sum()
         pd.testing.assert_frame_equal(result, expected)
 
+    def test_group_column_excluded(self):
+        """Test __getitem__ with multiple column selection."""
+        gb = self.df.groupby_fast("A")
+
+        # Should produce same result as pandas
+        pandas_gb = self.df.groupby("A")
+
+        result = gb.sum()
+        expected = pandas_gb.sum()
+        pd.testing.assert_frame_equal(result, expected)
+
     def test_dataframe_size_operation(self):
         """Test DataFrame size operation returns Series."""
-        gb = DataFrameGroupBy._from_by_keys(self.df, by=self.groups)
+        gb = self.df.groupby_fast(by=self.groups)
         pandas_gb = self.df.groupby(self.groups)
 
         result = gb.size()
@@ -376,7 +390,7 @@ class TestDataFrameGroupBy:
         """Test mask parameter with DataFrame."""
         mask = np.array([True, False, True, True, False, True])
 
-        gb = DataFrameGroupBy._from_by_keys(self.df, by=self.groups)
+        gb = self.df.groupby_fast(by=self.groups)
         result = gb.sum(mask=mask)
 
         # Compare to manual calculation
@@ -400,14 +414,14 @@ class TestDataFrameGroupBy:
 
     def test_dataframe_repr(self):
         """Test DataFrame string representation."""
-        gb = DataFrameGroupBy._from_by_keys(self.df, by=self.groups)
+        gb = self.df.groupby_fast(by=self.groups)
         repr_str = repr(gb)
         assert "DataFrameGroupBy" in repr_str
         assert "ngroups=2" in repr_str
 
     def test_dataframe_margins_functionality(self):
         """Test margins parameter with DataFrame."""
-        gb = DataFrameGroupBy._from_by_keys(self.df, by=self.groups)
+        gb = self.df.groupby_fast(by=self.groups)
 
         # Test sum with margins
         result_with_margins = gb.sum(margins=True)
@@ -422,7 +436,7 @@ class TestDataFrameGroupBy:
 
     def test_dataframe_rolling_functionality(self):
         """Test DataFrame rolling window operations."""
-        gb = DataFrameGroupBy._from_by_keys(self.df, by=self.groups)
+        gb = self.df.groupby_fast(by=self.groups)
         rolling_gb = gb.rolling(window=2)
 
         # Test rolling sum
@@ -458,8 +472,8 @@ class TestGroupByIntegration:
 
     def test_dataframe_to_series_consistency(self):
         """Test that DataFrameGroupBy column selection matches direct SeriesGroupBy."""
-        df_gb = DataFrameGroupBy._from_by_keys(self.df, by=self.groups)
-        series_gb = SeriesGroupBy._from_by_keys(self.df["A"], by=self.groups)
+        df_gb = self.df.groupby_fast(by=self.groups)
+        series_gb = self.df["A"].groupby_fast(by=self.groups)
 
         # Results should be identical
         df_result = df_gb["A"].sum()
@@ -469,7 +483,7 @@ class TestGroupByIntegration:
 
     def test_grouper_sharing(self):
         """Test that grouper objects can be shared between instances."""
-        df_gb = DataFrameGroupBy._from_by_keys(self.df, by=self.groups)
+        df_gb = self.df.groupby_fast(by=self.groups)
 
         # Column selection should share the same grouper
         col_gb = df_gb["A"]
@@ -479,7 +493,7 @@ class TestGroupByIntegration:
         assert list(df_gb.groups.keys()) == list(col_gb.groups.keys())
 
     def test_iter(self):
-        df_gb = DataFrameGroupBy._from_by_keys(self.df, by=self.groups)
+        df_gb = self.df.groupby_fast(by=self.groups)
         group_dict = dict(df_gb)
         assert list(group_dict) == ["X", "Y"]
         for k, sub in df_gb:
@@ -494,7 +508,7 @@ class TestEMA:
         data = pd.Series([1.0, 2.0, 3.0, 10.0, 20.0, 30.0])
         groups = pd.Series([1, 1, 1, 2, 2, 2])
 
-        gb = SeriesGroupBy._from_by_keys(data, by=groups)
+        gb = data.groupby_fast(by=groups)
         result = gb.ema(alpha=0.5)
 
         # Check basic properties
@@ -514,7 +528,7 @@ class TestEMA:
         data = pd.Series([1.0, 2.0, 3.0, 4.0])
         groups = pd.Series(["A", "A", "B", "B"])
 
-        gb = SeriesGroupBy._from_by_keys(data, by=groups)
+        gb = data.groupby_fast(by=groups)
         result = gb.ema(halflife=2.0)
 
         assert isinstance(result, pd.Series)
@@ -527,7 +541,7 @@ class TestEMA:
         groups = pd.Series([1, 1, 1, 2, 2, 2])
         times = pd.date_range("2024-01-01", periods=6, freq="1h")
 
-        gb = SeriesGroupBy._from_by_keys(data, by=groups)
+        gb = data.groupby_fast(by=groups)
         result = gb.ema(halflife="2h", times=times)
 
         assert isinstance(result, pd.Series)
@@ -540,7 +554,7 @@ class TestEMA:
         groups = pd.Series([1, 1, 1, 2, 2, 2])
         mask = np.array([True, True, False, True, True, True])
 
-        gb = SeriesGroupBy._from_by_keys(data, by=groups)
+        gb = data.groupby_fast(by=groups)
         result = gb.ema(alpha=0.5, mask=mask)
 
         assert isinstance(result, pd.Series)
@@ -551,7 +565,7 @@ class TestEMA:
         df = pd.DataFrame({"A": [1.0, 2.0, 3.0, 4.0], "B": [10.0, 20.0, 30.0, 40.0]})
         groups = pd.Series([1, 1, 2, 2])
 
-        gb = DataFrameGroupBy._from_by_keys(df, by=groups)
+        gb = df.groupby_fast(by=groups)
         result = gb.ema(alpha=0.5)
 
         assert isinstance(result, pd.DataFrame)
@@ -563,7 +577,7 @@ class TestEMA:
         df = pd.DataFrame({"A": [1.0, 2.0, 3.0, 4.0], "B": [10.0, 20.0, 30.0, 40.0]})
         groups = pd.Series([1, 1, 2, 2])
 
-        gb = DataFrameGroupBy._from_by_keys(df, by=groups)
+        gb = df.groupby_fast(by=groups)
         result = gb["A"].ema(alpha=0.5)
 
         assert isinstance(result, pd.Series)
@@ -578,7 +592,7 @@ class TestEdgeCases:
         empty_series = pd.Series([], dtype="float64", name="empty")
         empty_groups = pd.Series([], dtype="object", name="groups")
 
-        gb = SeriesGroupBy._from_by_keys(empty_series, by=empty_groups)
+        gb = empty_series.groupby_fast(by=empty_groups)
         assert gb.ngroups == 0
 
         # Aggregations on empty data should return empty results
@@ -591,7 +605,7 @@ class TestEdgeCases:
         data = pd.Series([1, 2, 3, 4])
         groups = pd.Series(["A", "A", "A", "A"])
 
-        gb = SeriesGroupBy._from_by_keys(data, by=groups)
+        gb = data.groupby_fast(by=groups)
         pandas_gb = data.groupby(groups)
 
         assert gb.ngroups == 1
@@ -608,7 +622,7 @@ class TestEdgeCases:
             [f"group_{i}" for i in range(n)]
         )  # Each value in its own group
 
-        gb = SeriesGroupBy._from_by_keys(data, by=groups)
+        gb = data.groupby_fast(by=groups)
         pandas_gb = data.groupby(groups)
 
         assert gb.ngroups == n
