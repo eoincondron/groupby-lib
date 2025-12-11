@@ -67,7 +67,7 @@ class TestTimezoneAwareGroupKeys:
         dates = pd.DatetimeIndex(["2020-01-01"] * 5 + ["2020-01-02"] * 5, tz="UTC")
         values = pd.Series(range(10))
 
-        gb = SeriesGroupBy(values, by=dates)
+        gb = SeriesGroupBy._from_by_keys(values, by=dates)
         result = gb.sum()
 
         expected = pd.Series(
@@ -119,7 +119,7 @@ class TestTimezoneAwareValues:
             )
         )
 
-        gb = SeriesGroupBy(values, by=groups)
+        gb = SeriesGroupBy._from_by_keys(values, by=groups)
         result = gb.sum()
 
         # Sum of timestamps should work (adds nanoseconds)
@@ -137,7 +137,7 @@ class TestTimezoneAwareValues:
             )
         )
 
-        gb = SeriesGroupBy(values, by=groups)
+        gb = SeriesGroupBy._from_by_keys(values, by=groups)
 
         # Test min
         result_min = gb.min()
@@ -159,7 +159,7 @@ class TestTimezoneAwareValues:
             )
         )
 
-        gb = SeriesGroupBy(values, by=groups)
+        gb = SeriesGroupBy._from_by_keys(values, by=groups)
 
         result_first = gb.first()
         assert result_first["A"] == pd.Timestamp("2020-01-01", tz="Europe/London")
@@ -179,7 +179,7 @@ class TestTimezoneAwareValues:
             )
         )
 
-        gb = SeriesGroupBy(values, by=groups)
+        gb = SeriesGroupBy._from_by_keys(values, by=groups)
         result = gb.mean()
 
         # Mean should be the midpoint
@@ -199,7 +199,7 @@ class TestTimezoneAwareValues:
             )
         )
 
-        gb = SeriesGroupBy(values, by=groups)
+        gb = SeriesGroupBy._from_by_keys(values, by=groups)
 
         # Min should skip NaT
         result_min = gb.min()
@@ -237,7 +237,7 @@ class TestMixedTimezoneScenarios:
         # Values in UTC
         values = pd.Series(pd.date_range("2020-01-01", periods=4, freq="D", tz="UTC"))
 
-        gb = SeriesGroupBy(values, by=keys)
+        gb = SeriesGroupBy._from_by_keys(values, by=keys)
         result = gb.first()
 
         # Keys preserve their timezone
@@ -254,7 +254,7 @@ class TestMixedTimezoneScenarios:
             )
         )
 
-        gb = SeriesGroupBy(values, by=keys)
+        gb = SeriesGroupBy._from_by_keys(values, by=keys)
         result = gb.first()
 
         # Values should preserve timezone
@@ -267,7 +267,7 @@ class TestMixedTimezoneScenarios:
             pd.date_range("2020-01-01", periods=4, freq="D")
         )  # No timezone
 
-        gb = SeriesGroupBy(values, by=keys)
+        gb = SeriesGroupBy._from_by_keys(values, by=keys)
         result = gb.first()
 
         # Keys should preserve timezone in index
@@ -298,7 +298,7 @@ class TestTimezoneAwareEdgeCases:
         keys = pd.DatetimeIndex([], tz="UTC")
         values = pd.Series([], dtype="float64")
 
-        gb = SeriesGroupBy(values, by=keys)
+        gb = SeriesGroupBy._from_by_keys(values, by=keys)
         result = gb.sum()
 
         assert len(result) == 0
@@ -311,7 +311,7 @@ class TestTimezoneAwareEdgeCases:
         keys = np.random.choice(dates, n)
         values = pd.Series(np.random.randn(n))
 
-        gb = SeriesGroupBy(values, by=keys)
+        gb = SeriesGroupBy._from_by_keys(values, by=keys)
         result = gb.mean()
 
         assert len(result) <= 100
@@ -323,7 +323,7 @@ class TestTimezoneAwareEdgeCases:
 
         # Test with timedelta
         timedeltas = pd.Series(pd.to_timedelta(["1 day", "2 days", "3 days", "4 days"]))
-        gb = SeriesGroupBy(timedeltas, by=groups)
+        gb = SeriesGroupBy._from_by_keys(timedeltas, by=groups)
         result_td = gb.sum()
         assert result_td.dtype.kind == "m"  # timedelta
 
@@ -333,7 +333,7 @@ class TestTimezoneAwareEdgeCases:
                 ["2020-01-01", "2020-01-02", "2020-01-03", "2020-01-04"], tz="UTC"
             )
         )
-        gb = SeriesGroupBy(timestamps, by=groups)
+        gb = SeriesGroupBy._from_by_keys(timestamps, by=groups)
         result_ts = gb.sum()
         assert result_ts.dtype.kind == "M"  # datetime
         assert "UTC" in str(result_ts.dtype)

@@ -23,7 +23,7 @@ class TestRollingMask:
 
     def test_series_rolling_mask_parameter_exists(self):
         """Test that rolling methods accept mask parameter."""
-        series_gb = SeriesGroupBy(self.data, by=self.groups)
+        series_gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
         rolling_obj = series_gb.rolling(window=2)
 
         # Test that all methods accept mask parameter without error
@@ -39,7 +39,7 @@ class TestRollingMask:
 
     def test_dataframe_rolling_mask_parameter_exists(self):
         """Test that DataFrame rolling methods accept mask parameter."""
-        df_gb = DataFrameGroupBy(self.df, by=self.df_groups)
+        df_gb = DataFrameGroupBy._from_by_keys(self.df, by=self.df_groups)
         rolling_obj = df_gb.rolling(window=2)
 
         mask = np.array([True, False, True, True, False, True])
@@ -54,7 +54,7 @@ class TestRollingMask:
 
     def test_rolling_mask_none_parameter(self):
         """Test that mask=None works correctly."""
-        series_gb = SeriesGroupBy(self.data, by=self.groups)
+        series_gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
         rolling_obj = series_gb.rolling(window=2)
 
         # Results should be identical for mask=None and no mask
@@ -65,7 +65,7 @@ class TestRollingMask:
 
     def test_rolling_mask_functionality_basic(self):
         """Test basic functionality of mask parameter."""
-        series_gb = SeriesGroupBy(self.data, by=self.groups)
+        series_gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
         rolling_obj = series_gb.rolling(window=2)
 
         # Create simple mask
@@ -78,7 +78,7 @@ class TestRollingMask:
 
     def test_rolling_mask_preserves_shape(self):
         """Test that mask parameter preserves output shape."""
-        series_gb = SeriesGroupBy(self.data, by=self.groups)
+        series_gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
         rolling_obj = series_gb.rolling(window=3)
 
         mask = np.array([True, False, True, False, True, False, True, False])
@@ -91,7 +91,7 @@ class TestRollingMask:
 
     def test_dataframe_rolling_mask_preserves_shape(self):
         """Test that DataFrame rolling mask preserves shape."""
-        df_gb = DataFrameGroupBy(self.df, by=self.df_groups)
+        df_gb = DataFrameGroupBy._from_by_keys(self.df, by=self.df_groups)
         rolling_obj = df_gb.rolling(window=2)
 
         mask = np.array([True, False, True, True, False, True])
@@ -102,7 +102,7 @@ class TestRollingMask:
 
     def test_rolling_mask_different_window_sizes(self):
         """Test mask parameter with different window sizes."""
-        series_gb = SeriesGroupBy(self.data, by=self.groups)
+        series_gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
         mask = np.array([True, False, True, True, False, True, True, False])
 
         for window in [1, 2, 3]:
@@ -113,7 +113,7 @@ class TestRollingMask:
 
     def test_rolling_agg_method_with_mask(self):
         """Test that the agg method also supports mask parameter."""
-        series_gb = SeriesGroupBy(self.data, by=self.groups)
+        series_gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
         rolling_obj = series_gb.rolling(window=2)
 
         mask = np.array([True, False, True, True, False, True, True, False])
@@ -129,7 +129,7 @@ class TestRollingMask:
         small_groups = pd.Series(["A", "A"])
         small_mask = np.array([True, False])
 
-        series_gb = SeriesGroupBy(small_data, by=small_groups)
+        series_gb = SeriesGroupBy._from_by_keys(small_data, by=small_groups)
         rolling_obj = series_gb.rolling(window=2)
 
         result = rolling_obj.sum(mask=small_mask)
@@ -138,7 +138,7 @@ class TestRollingMask:
 
     def test_series_groupby_rolling_inheritance(self):
         """Test that SeriesGroupByRolling properly inherits from BaseGroupByRolling."""
-        series_gb = SeriesGroupBy(self.data, by=self.groups)
+        series_gb = SeriesGroupBy._from_by_keys(self.data, by=self.groups)
         rolling_obj = series_gb.rolling(window=2)
 
         # Test that it has the mask parameter in its methods
@@ -155,7 +155,7 @@ class TestRollingMask:
     def test_dataframe_groupby_rolling_inheritance(self):
         """Test that DataFrameGroupByRolling properly inherits from
         BaseGroupByRolling."""
-        df_gb = DataFrameGroupBy(self.df, by=self.df_groups)
+        df_gb = DataFrameGroupBy._from_by_keys(self.df, by=self.df_groups)
         rolling_obj = df_gb.rolling(window=2)
 
         # Test that it has the mask parameter in its methods
@@ -179,7 +179,7 @@ class TestRollingMaskEdgeCases:
         empty_groups = pd.Series([], dtype=str)
         empty_mask = np.array([], dtype=bool)
 
-        series_gb = SeriesGroupBy(empty_data, by=empty_groups)
+        series_gb = SeriesGroupBy._from_by_keys(empty_data, by=empty_groups)
         rolling_obj = series_gb.rolling(window=2)
 
         result = rolling_obj.sum(mask=empty_mask)
@@ -192,7 +192,7 @@ class TestRollingMaskEdgeCases:
         groups = pd.Series(["A", "A", "A", "A"])
         mask = np.array([True, False, True, True])
 
-        series_gb = SeriesGroupBy(data, by=groups)
+        series_gb = SeriesGroupBy._from_by_keys(data, by=groups)
         rolling_obj = series_gb.rolling(window=2)
 
         result = rolling_obj.sum(mask=mask)
