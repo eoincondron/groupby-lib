@@ -6,11 +6,12 @@ groupby-lib GroupBy engine for better performance while maintaining full compati
 """
 
 from abc import ABC, abstractmethod
-from functools import wraps
-from typing import Hashable, Optional, Tuple, Union, List, Callable
+from functools import wraps, cached_property
+from typing import Hashable, Optional, Tuple, Union, List, Callable, Dict
 
 import numpy as np
 import pandas as pd
+import polars as pl
 
 from .core import ArrayType1D, GroupBy
 
@@ -790,7 +791,7 @@ class DataFrameGroupBy(BaseGroupBy):
     def __init__(
         self, obj: pd.DataFrame, by=None, level=None, grouper: Optional[GroupBy] = None
     ):
-        if not isinstance(obj, pd.DataFrame):
+        if not isinstance(obj, (pd.DataFrame, pl.DataFrame)):
             raise TypeError("obj must be a pandas DataFrame")
         super().__init__(obj, by=by, level=level, grouper=grouper)
 
