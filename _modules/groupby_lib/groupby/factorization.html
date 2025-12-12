@@ -1,0 +1,628 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>groupby_lib.groupby.factorization &mdash; groupby-lib 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            groupby-lib
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributing.html">Contributing</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">groupby-lib</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">groupby_lib.groupby.factorization</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for groupby_lib.groupby.factorization</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numba</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nb</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">polars</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pl</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pyarrow</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pa</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">groupby_lib.util</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">ArrayType1D</span><span class="p">,</span>
+    <span class="n">_convert_timestamp_to_tz_unaware</span><span class="p">,</span>
+    <span class="n">_val_to_numpy</span><span class="p">,</span>
+    <span class="n">get_array_name</span><span class="p">,</span>
+    <span class="n">is_pyarrow_backed</span><span class="p">,</span>
+    <span class="n">pandas_type_from_array</span><span class="p">,</span>
+    <span class="n">parallel_map</span><span class="p">,</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="factorize_arrow_arr">
+<a class="viewcode-back" href="../../../api_reference.html#groupby_lib.groupby.factorization.factorize_arrow_arr">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">factorize_arrow_arr</span><span class="p">(</span>
+    <span class="n">arr</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">pa</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">ChunkedArray</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;tuple[np.ndarray, np.ndarray | pd.Index]&quot;</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Method for factorizing the arrow arrays, including polars Series and Pandas Series backed by pyarrow</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">get_array_name</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">):</span>
+        <span class="n">arr</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">to_arrow</span><span class="p">()</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">):</span>
+        <span class="n">arr</span> <span class="o">=</span> <span class="n">pa</span><span class="o">.</span><span class="n">Array</span><span class="o">.</span><span class="n">from_pandas</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">ChunkedArray</span><span class="p">):</span>
+        <span class="n">arr</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">combine_chunks</span><span class="p">()</span>
+
+    <span class="n">arr</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">dictionary_encode</span><span class="p">()</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">ChunkedArray</span><span class="p">):</span>
+        <span class="n">arr</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">combine_chunks</span><span class="p">()</span>
+
+    <span class="n">codes</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">indices</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(</span><span class="n">zero_copy_only</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">labels</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">(</span><span class="n">arr</span><span class="o">.</span><span class="n">dictionary</span><span class="o">.</span><span class="n">to_pandas</span><span class="p">(</span><span class="n">types_mapper</span><span class="o">=</span><span class="n">pd</span><span class="o">.</span><span class="n">ArrowDtype</span><span class="p">),</span> <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">codes</span><span class="p">,</span> <span class="n">labels</span></div>
+
+
+
+<span class="nd">@nb</span><span class="o">.</span><span class="n">njit</span><span class="p">(</span><span class="n">cache</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_monotonic_factorization</span><span class="p">(</span><span class="n">arr_list</span><span class="p">,</span> <span class="n">total_len</span><span class="p">):</span>
+    <span class="n">codes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">total_len</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint32</span><span class="p">)</span>
+    <span class="n">labels</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">total_len</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">arr_list</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+
+    <span class="n">arr_num</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">arr</span> <span class="o">=</span> <span class="n">arr_list</span><span class="p">[</span><span class="n">arr_num</span><span class="p">]</span>
+
+    <span class="n">labels</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">arr</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">n_labels</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">codes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">prev</span> <span class="o">=</span> <span class="n">arr</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="n">cur_arr_pos</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">total_len</span><span class="p">):</span>
+        <span class="n">cur_arr_pos</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="n">cur_arr_pos</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">arr</span><span class="p">):</span>
+            <span class="n">arr_num</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">arr</span> <span class="o">=</span> <span class="n">arr_list</span><span class="p">[</span><span class="n">arr_num</span><span class="p">]</span>
+            <span class="n">cur_arr_pos</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="n">x</span> <span class="o">=</span> <span class="n">arr</span><span class="p">[</span><span class="n">cur_arr_pos</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">x</span> <span class="o">&lt;</span> <span class="n">prev</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">i</span><span class="p">,</span> <span class="n">codes</span><span class="p">,</span> <span class="n">labels</span><span class="p">[:</span><span class="n">n_labels</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="n">x</span> <span class="o">&gt;</span> <span class="n">prev</span><span class="p">:</span>
+            <span class="n">labels</span><span class="p">[</span><span class="n">n_labels</span><span class="p">]</span> <span class="o">=</span> <span class="n">x</span>
+            <span class="n">n_labels</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">codes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">n_labels</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="n">prev</span> <span class="o">=</span> <span class="n">x</span>
+
+    <span class="k">return</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">codes</span><span class="p">,</span> <span class="n">labels</span><span class="p">[:</span><span class="n">n_labels</span><span class="p">]</span>
+
+
+<div class="viewcode-block" id="monotonic_factorization">
+<a class="viewcode-back" href="../../../api_reference.html#groupby_lib.groupby.factorization.monotonic_factorization">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">monotonic_factorization</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">ArrayType1D</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Factorize an array using optimized monotonic factorization.</span>
+
+<span class="sd">    This function attempts to factorize an array by assuming it is monotonically</span>
+<span class="sd">    increasing. It provides a significant performance optimization for arrays that</span>
+<span class="sd">    are sorted or nearly sorted (such as date/time buckets, cumulative counts, etc.).</span>
+<span class="sd">    The function exits early as soon as it detects non-monotonicity to avoid wasted</span>
+<span class="sd">    computation and memory allocation.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    arr : ArrayType1D</span>
+<span class="sd">        Input array to factorize. Can be numpy array, pandas Series/Index/Categorical,</span>
+<span class="sd">        polars Series, or PyArrow Array/ChunkedArray.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    cutoff : int</span>
+<span class="sd">        Index position where monotonicity was broken, or len(arr) if the entire</span>
+<span class="sd">        array is monotonic. This indicates how many elements were successfully</span>
+<span class="sd">        processed using the optimized monotonic approach.</span>
+<span class="sd">    codes : np.ndarray</span>
+<span class="sd">        Integer codes representing the factorized values. Only elements up to</span>
+<span class="sd">        `cutoff` contain valid codes; remaining elements are uninitialized.</span>
+<span class="sd">        Shape: (len(arr),), dtype: np.uint32</span>
+<span class="sd">    labels : pd.Index</span>
+<span class="sd">        Unique values found during monotonic factorization as a pandas Index.</span>
+<span class="sd">        Only elements up to the number of unique values found are valid; remaining</span>
+<span class="sd">        elements are uninitialized. The dtype matches the original array&#39;s dtype.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This is an optimization function that should be called before falling back</span>
+<span class="sd">    to general factorization methods. It&#39;s particularly effective for:</span>
+
+<span class="sd">    - Time series data with increasing timestamps</span>
+<span class="sd">    - Cumulative counts or IDs</span>
+<span class="sd">    - Pre-sorted categorical data</span>
+<span class="sd">    - Sequential data with natural ordering</span>
+
+<span class="sd">    If the function returns cutoff &lt; len(arr), the caller should fall back to</span>
+<span class="sd">    general factorization methods for the complete array.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; arr = np.array([1, 2, 3, 4, 5])  # Fully monotonic</span>
+<span class="sd">    &gt;&gt;&gt; cutoff, codes, labels = monotonic_factorization(arr)</span>
+<span class="sd">    &gt;&gt;&gt; cutoff</span>
+<span class="sd">    5</span>
+<span class="sd">    &gt;&gt;&gt; codes</span>
+<span class="sd">    array([0, 1, 2, 3, 4], dtype=uint32)</span>
+<span class="sd">    &gt;&gt;&gt; labels</span>
+<span class="sd">    array([1, 2, 3, 4, 5])</span>
+
+<span class="sd">    &gt;&gt;&gt; arr = np.array([1, 2, 3, 1, 5])  # Breaks monotonicity at index 3</span>
+<span class="sd">    &gt;&gt;&gt; cutoff, codes, labels = monotonic_factorization(arr)</span>
+<span class="sd">    &gt;&gt;&gt; cutoff</span>
+<span class="sd">    3</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pd_type</span> <span class="o">=</span> <span class="n">pandas_type_from_array</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">pd_type</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">&quot;M&quot;</span><span class="p">:</span>
+        <span class="n">arr</span><span class="p">,</span> <span class="n">pd_type</span> <span class="o">=</span> <span class="n">_convert_timestamp_to_tz_unaware</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
+
+    <span class="n">arr_list</span> <span class="o">=</span> <span class="n">_val_to_numpy</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">as_list</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">total_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span>
+    <span class="n">cutoff</span><span class="p">,</span> <span class="n">codes</span><span class="p">,</span> <span class="n">labels</span> <span class="o">=</span> <span class="n">_monotonic_factorization</span><span class="p">(</span><span class="n">arr_list</span><span class="p">,</span> <span class="n">total_len</span><span class="p">)</span>
+    <span class="c1"># Convert labels to pd.Index with proper dtype handling</span>
+    <span class="k">if</span> <span class="n">pd_type</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">&quot;M&quot;</span><span class="p">:</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">(</span><span class="n">labels</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="nb">int</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">pd_type</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">(</span><span class="n">labels</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">pd_type</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">cutoff</span><span class="p">,</span> <span class="n">codes</span><span class="p">,</span> <span class="n">labels</span></div>
+
+
+
+<div class="viewcode-block" id="factorize_range_index">
+<a class="viewcode-back" href="../../../api_reference.html#groupby_lib.groupby.factorization.factorize_range_index">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">factorize_range_index</span><span class="p">(</span><span class="n">index</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">RangeIndex</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">]:</span>
+    <span class="n">codes</span><span class="p">,</span> <span class="n">labels</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">values</span> <span class="o">-</span> <span class="n">index</span><span class="o">.</span><span class="n">start</span><span class="p">,</span> <span class="n">index</span>
+    <span class="k">if</span> <span class="n">index</span><span class="o">.</span><span class="n">step</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">codes</span> <span class="o">=</span> <span class="n">codes</span> <span class="o">//</span> <span class="n">index</span><span class="o">.</span><span class="n">step</span>
+
+    <span class="k">return</span> <span class="n">codes</span><span class="p">,</span> <span class="n">labels</span></div>
+
+
+
+<div class="viewcode-block" id="factorize_1d">
+<a class="viewcode-back" href="../../../api_reference.html#groupby_lib.groupby.factorization.factorize_1d">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">factorize_1d</span><span class="p">(</span>
+    <span class="n">values</span><span class="p">,</span>
+    <span class="n">sort</span><span class="p">:</span> <span class="s2">&quot;bool&quot;</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">size_hint</span><span class="p">:</span> <span class="s2">&quot;int | None&quot;</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;tuple[np.ndarray, np.ndarray | pd.Index]&quot;</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Encode the object as an enumerated type or categorical variable.</span>
+
+<span class="sd">    This method is useful for obtaining a numeric representation of an</span>
+<span class="sd">    array when all that matters is identifying distinct values. factorize_1d</span>
+<span class="sd">    is available as both a top-level function :func:`~groupby_lib.util.factorize_1d`,</span>
+<span class="sd">    and as a method.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    values : array-like</span>
+<span class="sd">        Sequence to be encoded. Can be any array-like object including lists,</span>
+<span class="sd">        numpy arrays, pandas Series, or pandas Categorical.</span>
+<span class="sd">    sort : bool, default False</span>
+<span class="sd">        Sort `values` before factorizing. If False, factorize in the order</span>
+<span class="sd">        in which the values first appear.</span>
+<span class="sd">    size_hint : int, optional</span>
+<span class="sd">        Hint to the algorithm for the expected number of unique values. This</span>
+<span class="sd">        can be used to pre-allocate the return arrays.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    codes : np.ndarray[int64]</span>
+<span class="sd">        An integer array that represents the labels for each element in `values`.</span>
+<span class="sd">        For missing values (NaN, None), codes will contain -1.</span>
+<span class="sd">    uniques : np.ndarray or pd.Index</span>
+<span class="sd">        An array of unique values. When the input is a pandas Categorical,</span>
+<span class="sd">        this will be the categorical&#39;s categories. Otherwise, it will be a</span>
+<span class="sd">        numpy array or pandas Index containing the unique values in the order</span>
+<span class="sd">        they first appeared (or sorted order if sort=True).</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    factorize_2d : Factorize multiple 1-D arrays simultaneously.</span>
+<span class="sd">    pandas.factorize : pandas equivalent function.</span>
+<span class="sd">    pandas.Categorical : Represent a categorical variable in pandas.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    For pandas Categorical inputs, this function returns the categorical&#39;s</span>
+<span class="sd">    codes and categories directly, ignoring the sort and size_hint parameters.</span>
+
+<span class="sd">    Missing values (NaN, None) are assigned code -1 and are not included in</span>
+<span class="sd">    the uniques array.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; import pandas as pd</span>
+<span class="sd">    &gt;&gt;&gt; from groupby_lib.util import factorize_1d</span>
+
+<span class="sd">    Basic usage with a list:</span>
+
+<span class="sd">    &gt;&gt;&gt; values = [1, 2, 3, 1, 2, 3]</span>
+<span class="sd">    &gt;&gt;&gt; codes, uniques = factorize_1d(values)</span>
+<span class="sd">    &gt;&gt;&gt; codes</span>
+<span class="sd">    array([0, 1, 2, 0, 1, 2])</span>
+<span class="sd">    &gt;&gt;&gt; uniques</span>
+<span class="sd">    array([1, 2, 3])</span>
+
+<span class="sd">    With string values:</span>
+
+<span class="sd">    &gt;&gt;&gt; values = [&#39;a&#39;, &#39;b&#39;, &#39;c&#39;, &#39;a&#39;, &#39;b&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; codes, uniques = factorize_1d(values)</span>
+<span class="sd">    &gt;&gt;&gt; codes</span>
+<span class="sd">    array([0, 1, 2, 0, 1])</span>
+<span class="sd">    &gt;&gt;&gt; uniques</span>
+<span class="sd">    array([&#39;a&#39;, &#39;b&#39;, &#39;c&#39;], dtype=&#39;&lt;U1&#39;)</span>
+
+<span class="sd">    With sorting enabled:</span>
+
+<span class="sd">    &gt;&gt;&gt; values = [&#39;c&#39;, &#39;a&#39;, &#39;b&#39;, &#39;c&#39;, &#39;a&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; codes, uniques = factorize_1d(values, sort=True)</span>
+<span class="sd">    &gt;&gt;&gt; codes</span>
+<span class="sd">    array([2, 0, 1, 2, 0])</span>
+<span class="sd">    &gt;&gt;&gt; uniques</span>
+<span class="sd">    array([&#39;a&#39;, &#39;b&#39;, &#39;c&#39;], dtype=&#39;&lt;U1&#39;)</span>
+
+<span class="sd">    With NaN values:</span>
+
+<span class="sd">    &gt;&gt;&gt; values = [1.0, 2.0, np.nan, 1.0, np.nan]</span>
+<span class="sd">    &gt;&gt;&gt; codes, uniques = factorize_1d(values)</span>
+<span class="sd">    &gt;&gt;&gt; codes</span>
+<span class="sd">    array([ 0,  1, -1,  0, -1])</span>
+<span class="sd">    &gt;&gt;&gt; uniques</span>
+<span class="sd">    array([1., 2.])</span>
+
+<span class="sd">    With pandas Categorical:</span>
+
+<span class="sd">    &gt;&gt;&gt; cat = pd.Categorical([&#39;a&#39;, &#39;b&#39;, &#39;c&#39;, &#39;a&#39;, &#39;b&#39;])</span>
+<span class="sd">    &gt;&gt;&gt; codes, uniques = factorize_1d(cat)</span>
+<span class="sd">    &gt;&gt;&gt; codes</span>
+<span class="sd">    array([0, 1, 2, 0, 1])</span>
+<span class="sd">    &gt;&gt;&gt; uniques</span>
+<span class="sd">    Index([&#39;a&#39;, &#39;b&#39;, &#39;c&#39;], dtype=&#39;object&#39;)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">RangeIndex</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">factorize_range_index</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">is_pyarrow_backed</span><span class="p">(</span><span class="n">values</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">factorize_arrow_arr</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">):</span>
+        <span class="n">values</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">CategoricalDtype</span><span class="p">):</span>
+        <span class="n">cat</span> <span class="o">=</span> <span class="n">values</span><span class="o">.</span><span class="n">cat</span>
+        <span class="n">codes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">cat</span><span class="o">.</span><span class="n">codes</span><span class="p">)</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Categorical</span><span class="p">(</span><span class="n">cat</span><span class="o">.</span><span class="n">categories</span><span class="p">,</span> <span class="n">ordered</span><span class="o">=</span><span class="n">cat</span><span class="o">.</span><span class="n">ordered</span><span class="p">)</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">(</span><span class="n">labels</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">values</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">codes</span><span class="p">,</span> <span class="n">labels</span>
+    <span class="k">elif</span> <span class="n">pd</span><span class="o">.</span><span class="n">api</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">is_bool_dtype</span><span class="p">(</span><span class="n">values</span><span class="p">):</span>
+        <span class="n">codes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="p">)</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="s2">&quot;int8&quot;</span><span class="p">)</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">([</span><span class="kc">False</span><span class="p">,</span> <span class="kc">True</span><span class="p">],</span> <span class="n">name</span><span class="o">=</span><span class="n">values</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">codes</span><span class="p">,</span> <span class="n">labels</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">codes</span><span class="p">,</span> <span class="n">uniques</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">factorize</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">use_na_sentinel</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="c1"># Handle sorting manually if needed</span>
+        <span class="k">if</span> <span class="n">sort</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">uniques</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">sort_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">uniques</span><span class="p">)</span>
+                <span class="n">uniques</span> <span class="o">=</span> <span class="n">uniques</span><span class="p">[</span><span class="n">sort_idx</span><span class="p">]</span>
+                <span class="c1"># Remap codes</span>
+                <span class="n">null</span> <span class="o">=</span> <span class="n">codes</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span>
+                <span class="n">codes</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">sort_idx</span><span class="p">)[</span><span class="n">codes</span><span class="p">]</span>
+                <span class="n">codes</span><span class="p">[</span><span class="n">null</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+                <span class="c1"># If sorting fails, just return unsorted</span>
+                <span class="k">pass</span>
+
+        <span class="k">return</span> <span class="n">codes</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">(</span><span class="n">uniques</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">values</span><span class="o">.</span><span class="n">name</span><span class="p">)</span></div>
+
+
+
+<span class="nd">@nb</span><span class="o">.</span><span class="n">njit</span><span class="p">(</span><span class="n">cache</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_weight_code_sum</span><span class="p">(</span><span class="n">codes</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">weights</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Numpy&#39;s dot product does not work within the scope below.</span>
+<span class="sd">    Also, we can handle negative codes more easily in this scope&quot;&quot;&quot;</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">w</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">codes</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">weights</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]):</span>
+        <span class="k">if</span> <span class="n">c</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="o">-</span><span class="mi">1</span>
+        <span class="n">out</span> <span class="o">+=</span> <span class="n">c</span> <span class="o">*</span> <span class="n">w</span>
+    <span class="c1"># weight for the last code is always 1</span>
+    <span class="k">return</span> <span class="n">out</span> <span class="o">+</span> <span class="n">codes</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+
+<span class="nd">@nb</span><span class="o">.</span><span class="n">njit</span><span class="p">(</span><span class="n">cache</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_combine_factorizations</span><span class="p">(</span>
+    <span class="n">codes</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">code_weights</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">code_tracker</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">nb</span><span class="o">.</span><span class="n">typed</span><span class="o">.</span><span class="n">Dict</span><span class="p">],</span>
+<span class="p">):</span>
+    <span class="n">combined_codes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">codes</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;int64&quot;</span><span class="p">)</span>
+    <span class="n">uniques</span> <span class="o">=</span> <span class="n">codes</span>  <span class="c1"># re-purposing codes to gather the uniques. NB that group_id &lt;= i will always hold.</span>
+    <span class="n">group_id</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">tracker_is_array</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">code_tracker</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">combined_codes</span><span class="p">)):</span>
+        <span class="n">k</span> <span class="o">=</span> <span class="n">_weight_code_sum</span><span class="p">(</span><span class="n">codes</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">code_weights</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">k</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+            <span class="n">combined_codes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">tracker_is_array</span><span class="p">:</span>
+                <span class="n">code</span> <span class="o">=</span> <span class="n">code_tracker</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+            <span class="k">elif</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">code_tracker</span><span class="p">:</span>
+                <span class="n">code</span> <span class="o">=</span> <span class="n">code_tracker</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">code</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+
+            <span class="k">if</span> <span class="n">code</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                <span class="n">code_tracker</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">group_id</span>
+                <span class="n">combined_codes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">group_id</span>
+                <span class="n">uniques</span><span class="p">[</span><span class="n">group_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">codes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="n">group_id</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">combined_codes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">code_tracker</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">combined_codes</span><span class="p">,</span> <span class="n">uniques</span><span class="p">[:</span><span class="n">group_id</span><span class="p">]</span>
+
+
+<div class="viewcode-block" id="factorize_2d">
+<a class="viewcode-back" href="../../../api_reference.html#groupby_lib.groupby.factorization.factorize_2d">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">factorize_2d</span><span class="p">(</span>
+    <span class="o">*</span><span class="n">vals</span><span class="p">,</span>
+    <span class="n">sort</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">factorize_in_parallel</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">use_dict_limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">500_000_000</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">MultiIndex</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Encode multiple 1-D arrays as enumerated types or categorical variables.</span>
+
+<span class="sd">    This function factorizes multiple arrays simultaneously, creating a</span>
+<span class="sd">    MultiIndex that represents all unique combinations of values across</span>
+<span class="sd">    the input arrays. This is useful for creating group identifiers from</span>
+<span class="sd">    multiple categorical variables.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    *vals : array-like</span>
+<span class="sd">        Variable number of 1-D array-like objects to be factorized together.</span>
+<span class="sd">        Each array should have the same length. Can be any combination of</span>
+<span class="sd">        lists, numpy arrays, pandas Series, or pandas Categorical objects.</span>
+<span class="sd">    sort : bool, default False</span>
+<span class="sd">        If True, the unique combinations of values will be sorted before</span>
+<span class="sd">        factorization. If False, the order of combinations will be based on</span>
+<span class="sd">        the order in which they first appear in the input arrays.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    codes : np.ndarray[int64]</span>
+<span class="sd">        An integer array where each element represents the group identifier</span>
+<span class="sd">        for the corresponding combination of values across all input arrays.</span>
+<span class="sd">        Identical combinations will have the same code.</span>
+<span class="sd">    labels : pd.MultiIndex</span>
+<span class="sd">        A MultiIndex containing all unique combinations of values from the</span>
+<span class="sd">        input arrays. The number of levels equals the number of input arrays.</span>
+<span class="sd">        Each level contains the unique values from the corresponding input array.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If input arrays have different lengths.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    factorize_1d : Factorize a single 1-D array.</span>
+<span class="sd">    pandas.factorize : pandas equivalent function for single arrays.</span>
+<span class="sd">    pandas.MultiIndex.from_product : Create MultiIndex from the cartesian product of iterables.</span>
+<span class="sd">    pandas.core.sorting.get_group_index : Get group index from multiple arrays.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The function internally uses `factorize_1d` on each input array, then</span>
+<span class="sd">    combines the results using pandas&#39; `get_group_index` function to create</span>
+<span class="sd">    a unified group identifier.</span>
+
+<span class="sd">    Missing values (NaN, None) in any array will be treated as distinct</span>
+<span class="sd">    values and will contribute to unique combinations.</span>
+
+<span class="sd">    The resulting MultiIndex is created using `pd.MultiIndex.from_product`,</span>
+<span class="sd">    which means it contains all possible combinations of the unique values</span>
+<span class="sd">    from each array, not just the combinations that actually appear in the data.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; import pandas as pd</span>
+<span class="sd">    &gt;&gt;&gt; from groupby_lib.util import factorize_2d</span>
+
+<span class="sd">    Basic usage with two arrays:</span>
+
+<span class="sd">    &gt;&gt;&gt; vals1 = [1, 2, 3, 1, 2]</span>
+<span class="sd">    &gt;&gt;&gt; vals2 = [&#39;a&#39;, &#39;b&#39;, &#39;c&#39;, &#39;a&#39;, &#39;b&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; codes, labels = factorize_2d(vals1, vals2)</span>
+<span class="sd">    &gt;&gt;&gt; codes</span>
+<span class="sd">    array([0, 1, 2, 0, 1])</span>
+<span class="sd">    &gt;&gt;&gt; labels</span>
+<span class="sd">    MultiIndex([(1, &#39;a&#39;),</span>
+<span class="sd">                (2, &#39;b&#39;),</span>
+<span class="sd">                (3, &#39;c&#39;)],</span>
+<span class="sd">               names=[None, None])</span>
+
+<span class="sd">    With three arrays:</span>
+
+<span class="sd">    &gt;&gt;&gt; vals1 = [1, 1, 2, 2]</span>
+<span class="sd">    &gt;&gt;&gt; vals2 = [&#39;x&#39;, &#39;y&#39;, &#39;x&#39;, &#39;y&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; vals3 = [True, False, True, False]</span>
+<span class="sd">    &gt;&gt;&gt; codes, labels = factorize_2d(vals1, vals2, vals3)</span>
+<span class="sd">    &gt;&gt;&gt; codes</span>
+<span class="sd">    array([0, 1, 2, 3])</span>
+<span class="sd">    &gt;&gt;&gt; labels.nlevels</span>
+<span class="sd">    3</span>
+
+<span class="sd">    Identical combinations get same codes:</span>
+
+<span class="sd">    &gt;&gt;&gt; vals1 = [1, 2, 1, 2, 1]</span>
+<span class="sd">    &gt;&gt;&gt; vals2 = [&#39;a&#39;, &#39;b&#39;, &#39;a&#39;, &#39;b&#39;, &#39;a&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; codes, labels = factorize_2d(vals1, vals2)</span>
+<span class="sd">    &gt;&gt;&gt; codes</span>
+<span class="sd">    array([0, 1, 0, 1, 0])</span>
+
+<span class="sd">    With pandas Series input:</span>
+
+<span class="sd">    &gt;&gt;&gt; s1 = pd.Series([1, 2, 3])</span>
+<span class="sd">    &gt;&gt;&gt; s2 = pd.Series([&#39;x&#39;, &#39;y&#39;, &#39;z&#39;])</span>
+<span class="sd">    &gt;&gt;&gt; codes, labels = factorize_2d(s1, s2)</span>
+<span class="sd">    &gt;&gt;&gt; codes</span>
+<span class="sd">    array([0, 1, 2])</span>
+<span class="sd">    &gt;&gt;&gt; labels</span>
+<span class="sd">    MultiIndex([(1, &#39;x&#39;),</span>
+<span class="sd">                (2, &#39;y&#39;),</span>
+<span class="sd">                (3, &#39;z&#39;)],</span>
+<span class="sd">               names=[None, None])</span>
+
+<span class="sd">    With missing values:</span>
+
+<span class="sd">    &gt;&gt;&gt; vals1 = [1, 2, np.nan, 1, np.nan]</span>
+<span class="sd">    &gt;&gt;&gt; vals2 = [&#39;a&#39;, &#39;b&#39;, &#39;c&#39;, &#39;a&#39;, &#39;c&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; codes, labels = factorize_2d(vals1, vals2)</span>
+<span class="sd">    &gt;&gt;&gt; codes  # NaN combinations get unique codes</span>
+<span class="sd">    array([0, 1, 2, 0, 2])</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">factorize_in_parallel</span><span class="p">:</span>
+        <span class="n">factored</span> <span class="o">=</span> <span class="n">parallel_map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">factorize_1d</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">vals</span><span class="p">)))</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">factored</span> <span class="o">=</span> <span class="p">[</span><span class="n">factorize_1d</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">vals</span><span class="p">]</span>
+
+    <span class="n">codes_list</span><span class="p">,</span> <span class="n">labels</span> <span class="o">=</span> <span class="nb">zip</span><span class="p">(</span><span class="o">*</span><span class="n">factored</span><span class="p">)</span>
+    <span class="n">shape</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">len</span><span class="p">,</span> <span class="n">labels</span><span class="p">))</span>
+    <span class="n">code_arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">codes_list</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+    <span class="c1"># weights for weighted sum of codes to map them to a 1-dimensional space</span>
+    <span class="n">code_weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumprod</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span>
+    <span class="p">(</span>
+        <span class="n">code_weights</span><span class="p">,</span>
+        <span class="n">cartesian_product_size</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">code_weights</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">//</span> <span class="n">code_weights</span><span class="p">,</span>
+        <span class="n">code_weights</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">cartesian_product_size</span> <span class="o">&lt;</span> <span class="n">use_dict_limit</span><span class="p">:</span>
+        <span class="n">code_tracker</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">cartesian_product_size</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;int32&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">code_tracker</span> <span class="o">=</span> <span class="n">nb</span><span class="o">.</span><span class="n">typed</span><span class="o">.</span><span class="n">Dict</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">nb</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">int64</span><span class="p">,</span> <span class="n">nb</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+
+    <span class="n">combined_codes</span><span class="p">,</span> <span class="n">uniques</span> <span class="o">=</span> <span class="n">_combine_factorizations</span><span class="p">(</span>
+        <span class="n">code_arr</span><span class="p">,</span>
+        <span class="n">code_weights</span><span class="o">=</span><span class="n">code_weights</span><span class="p">,</span>
+        <span class="n">code_tracker</span><span class="o">=</span><span class="n">code_tracker</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">multi_index</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">MultiIndex</span><span class="p">(</span>
+        <span class="n">codes</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="n">uniques</span><span class="o">.</span><span class="n">T</span><span class="p">),</span>
+        <span class="n">levels</span><span class="o">=</span><span class="n">labels</span><span class="p">,</span>
+        <span class="n">names</span><span class="o">=</span><span class="p">[</span><span class="n">get_array_name</span><span class="p">(</span><span class="n">lvl</span><span class="p">)</span> <span class="k">for</span> <span class="n">lvl</span> <span class="ow">in</span> <span class="n">labels</span><span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">sort</span><span class="p">:</span>
+        <span class="n">argsort</span> <span class="o">=</span> <span class="n">multi_index</span><span class="o">.</span><span class="n">argsort</span><span class="p">()</span>
+        <span class="n">combined_codes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">argsort</span><span class="p">)[</span><span class="n">combined_codes</span><span class="p">]</span>
+        <span class="n">multi_index</span> <span class="o">=</span> <span class="n">multi_index</span><span class="p">[</span><span class="n">argsort</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">combined_codes</span><span class="p">,</span> <span class="n">multi_index</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Eoin Condron.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
