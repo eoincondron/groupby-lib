@@ -9,6 +9,13 @@ from typing import Any, List, Optional, Union
 
 import pandas as pd
 
+try:
+    import polars as pl  # noqa
+
+    polars_installed = True
+except ImportError:
+    polars_installed = False
+
 from .api import DataFrameGroupBy, SeriesGroupBy
 
 
@@ -96,7 +103,7 @@ def groupby_fast_dataframe(
     return DataFrameGroupBy(self, by=by, level=level)
 
 
-def install_groupby_fast():
+def install_groupby_fast(patch_name: str = "groupby_fast"):
     """
     Install groupby_fast methods on pandas Series and DataFrame classes.
 
@@ -118,40 +125,38 @@ def install_groupby_fast():
     >>> result = gb.sum()
     """
     # Add methods to the classes
-    pd.Series.groupby_fast = groupby_fast_series
-    pd.DataFrame.groupby_fast = groupby_fast_dataframe
+    setattr(pd.Series, patch_name, groupby_fast_series)
+    setattr(pd.DataFrame, patch_name, groupby_fast_dataframe)
+    if polars_installed:
+        setattr(pl.Series, patch_name, groupby_fast_series)
+        setattr(pl.DataFrame, patch_name, groupby_fast_dataframe)
 
-    print("✅ groupby-lib groupby_fast methods installed!")
+    print("✅ groupby-lib patches installed methods installed!")
     print(
-        "   Use df.groupby_fast() and series.groupby_fast() for optimized performance"
+        f"   Use df.{patch_name}() and series.{patch_name}() for optimized performance"
     )
 
 
-def uninstall_groupby_fast():
+def uninstall_groupby_fast(patch_name: str = "groupby_fast"):
     """
     Remove groupby_fast methods from pandas Series and DataFrame classes.
 
     This function removes the monkey-patched methods, restoring pandas to its
     original state. Useful for cleanup or testing.
     """
-    if hasattr(pd.Series, "groupby_fast"):
-        delattr(pd.Series, "groupby_fast")
-    if hasattr(pd.DataFrame, "groupby_fast"):
-        delattr(pd.DataFrame, "groupby_fast")
+    if polars_installed:
+        try:
+            delattr(pl.Series, patch_name)
+            delattr(pl.DataFrame, patch_name)
+        except AttributeError:
+            print(f"⚠️ groupby-lib {patch_name} methods were not found in polars")
 
-    print("✅ groupby-lib groupby_fast methods removed")
-
-
-def is_groupby_fast_installed() -> bool:
-    """
-    Check if groupby_fast methods are currently installed.
-
-    Returns
-    -------
-    bool
-        True if groupby_fast methods are available on pandas objects
-    """
-    return hasattr(pd.Series, "groupby_fast") and hasattr(pd.DataFrame, "groupby_fast")
+        try:
+            delattr(pd.Series, patch_name)
+            delattr(pd.DataFrame, patch_name)
+            print(f"✅ groupby-lib {patch_name} methods removed")
+        except AttributeError:
+            print(f"⚠️ groupby-lib {patch_name} methods were not found")
 
 
 # Optional: Auto-install when module is imported
