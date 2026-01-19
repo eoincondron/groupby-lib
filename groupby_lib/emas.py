@@ -4,7 +4,7 @@ import numba as nb
 import numpy as np
 import pandas as pd
 
-from .util import check_data_inputs_aligned
+from .util import check_data_inputs_aligned, _convert_timestamp_to_tz_unaware
 
 
 _COMMON_VALUE_TYPES = [
@@ -168,6 +168,11 @@ def _halflife_to_int(halflife):
     return halflife
 
 
+def _times_to_int_array(times):
+    times, _ = _convert_timestamp_to_tz_unaware(times)
+    return times.view(np.int64)
+
+
 @check_data_inputs_aligned("values, times")
 def ema(
     values: np.ndarray | pd.Series,
@@ -230,7 +235,7 @@ def ema(
             raise ValueError("Halflife must be provided when times are given.")
         halflife = _halflife_to_int(halflife)
 
-        times = np.asarray(times).view(np.int64)
+        times = _times_to_int_array(times)
         ema = _ema_time_weighted(arr, times, halflife)
         return _maybe_to_series(ema)
 
@@ -522,6 +527,9 @@ def ema_grouped(
     group_key_arr = np.asarray(group_key)
     values_arr = np.asarray(values)
 
+    if values_arr.dtype.kind not in ("f", "i"):
+        raise TypeError("values must be numeric")
+
     # Validate dimensions first
     if values_arr.ndim != 1:
         raise ValueError("values must be one-dimensional")
@@ -566,7 +574,7 @@ def ema_grouped(
             raise ValueError("halflife must be provided when times are given")
 
         nb_kwargs["halflife"] = halflife
-        nb_kwargs["times"] = np.asarray(times).view(np.int64)
+        nb_kwargs["times"] = _times_to_int_array(times)
         result = _ema_grouped_timed(**nb_kwargs)
         return _maybe_to_series(result)
 
