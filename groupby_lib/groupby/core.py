@@ -24,7 +24,6 @@ from ..util import (
     is_categorical,
     is_pyarrow_backed,
     mean_from_sum_count,
-    pandas_type_from_array,
     parallel_map,
     series_is_numeric,
     series_is_timestamp,
@@ -624,7 +623,7 @@ class GroupBy:
             if series_is_timestamp(val):
                 value_list[i], type_list[i] = _convert_timestamp_to_tz_unaware(val)
             else:
-                type_list[i] = pandas_type_from_array(val)
+                type_list[i] = val.dtype if hasattr(val, "dtype") else val.type
 
         to_check = value_list
         if mask is not None and pd.api.types.is_bool_dtype(mask):
@@ -645,18 +644,53 @@ class GroupBy:
 
         return value_names, value_list, type_list, common_index
 
-    def _convert_arr_to_series(self, arr, pd_type, index):
-        if pd_type.kind == "M":
-            arr = arr.view(int)
-            dtype = pd_type
+    def _convert_arr_to_pandas_series(
+        self, arr: np.ndarray, orig_type, index: pd.Index
+    ) -> pd.Series:
+        if arr.dtype.kind == "M":
+            if isinstance(orig_type, pl.DataType):
+                series = pl.Series(arr, dtype=orig_type)
+                arrow = series.to_arrow()
+                arr = arrow.to_numpy()
+                dtype = pd.ArrowDtype(arrow.type)
+            else:
+                arr = arr.view(int)
+                dtype = orig_type
         else:
-            dtype = arr.dtype
+            dtype = None
         return pd.Series(
             arr,
             index,
             dtype=dtype,
             copy=False,
         )
+
+    @staticmethod
+    def _values_is_polars(type_list: List) -> bool:
+        polars_count = sum(isinstance(type, pl.DataType) for type in type_list)
+        if polars_count == 0:
+            return False
+        elif polars_count == len(type_list):
+            return True
+        else:
+            raise TypeError(
+                "A mixture of polars Series and other array types was provided in 'values'. "
+            )
+
+    def _convert_arr_to_polars_series(self, arr, orig_type) -> pl.Series:
+        if arr.dtype.kind == "M":
+            ints = arr.view(int)
+            if ints.min() == np.iinfo(np.int64).min:
+                # we have to pass the original array to polars to respect nulls
+                arr = arr
+            else:
+                # we can use the ints and avoid a copy
+                arr = ints
+            dtype = orig_type
+        else:
+            dtype = None
+
+        return pl.Series(arr, dtype=dtype)
 
     def _add_margins(
         self,
@@ -685,16 +719,17 @@ class GroupBy:
         ]
 
     @staticmethod
-    def _maybe_squeeze_to_1d(result, values, n_values):
+    def _maybe_squeeze_to_1d(result: pd.DataFrame | pl.DataFrame, values, n_values):
         if (
             (n_values == 1)
             and isinstance(values, ArrayType1D)
             or isinstance(values, list)
             and np.ndim(values[0]) == 0
         ):
-            result = result.squeeze(axis=1)
+            result = result[result.columns[0]]
             if get_array_name(values) is None:
-                result.name = None
+                name = None if isinstance(result, pd.Series) else ""
+                result = result.rename(name)
 
         return result
 
@@ -922,18 +957,20 @@ class GroupBy:
             values, mask
         )
 
+        return_polars = self._values_is_polars(type_list) and transform
+
         results = self._apply_gb_func_across_chunked_group_keys(
             effective_func_name,
             value_list=value_list,
             mask=mask,
         )
 
-        results, counts = map(list, zip(*results))
+        result_columns, counts = map(list, zip(*results))
         result_len = len(self.result_index)
 
         if transform:
             self._unify_group_key_chunks()
-            results = [result[self.group_ikey] for result in results]
+            result_columns = [result[self.group_ikey] for result in result_columns]
             if common_index is not None:
                 result_index = common_index
             else:
@@ -941,17 +978,29 @@ class GroupBy:
         else:
             result_index = self.result_index
 
-        results = [
-            self._convert_arr_to_series(arr[: len(result_index)], pd_type, result_index)
-            for arr, pd_type in zip(results, type_list)
-        ]
-
         result_col_names = self._col_names_from_value_names(value_names)
 
-        result_df = pd.DataFrame(
-            dict(zip(result_col_names, results)),
-            copy=False,
-        )
+        if return_polars:
+            result_columns = [
+                self._convert_arr_to_polars_series(arr=result, orig_type=orig_type)
+                for result, orig_type in zip(result_columns, type_list)
+            ]
+            result_df = pl.DataFrame(
+                dict(zip(result_col_names, result_columns)),
+            )
+        else:
+            result_columns = [
+                self._convert_arr_to_pandas_series(
+                    arr=result[: len(result_index)],
+                    orig_type=orig_type,
+                    index=result_index,
+                )
+                for result, orig_type in zip(result_columns, type_list)
+            ]
+            result_df = pd.DataFrame(
+                dict(zip(result_col_names, result_columns)),
+                copy=False,
+            )
 
         result = self._maybe_squeeze_to_1d(result_df, values, len(value_list))
 
@@ -1131,7 +1180,7 @@ class GroupBy:
             mask=mask, margins=margins, transform=transform, observed_only=observed_only
         )
         sq_sum = self._apply_gb_reduction("sum_squares", values=values, **kwargs)
-        sum_sq = self.sum(values=values, **kwargs).astype(float) ** 2
+        sum_sq = self.sum(values=values, **kwargs).to_numpy().astype(np.float64) ** 2
         count = self.count(values=values, **kwargs)
         return (sq_sum - sum_sq / count) / (count - ddof)
 
@@ -1412,8 +1461,8 @@ class GroupBy:
                     index = index[mask[indexer]]
 
         series = (
-            self._convert_arr_to_series(arr, pd_type, index)
-            for arr, pd_type in zip(arrays, type_list)
+            self._convert_arr_to_pandas_series(arr, orig_type, index)
+            for arr, orig_type in zip(arrays, type_list)
         )
         result_df = pd.DataFrame(dict(zip(result_col_names, series)))
 
@@ -1585,6 +1634,8 @@ class GroupBy:
             values, mask
         )
 
+        return_polars = self._values_is_polars(type_list)
+
         if index_by_groups:
             indexer = self._group_sort_indexer
             result_index = self._build_group_sorted_index(common_index)
@@ -1611,16 +1662,27 @@ class GroupBy:
         ]
         results = parallel_map(ema_grouped, arg_list)
 
-        results = (
-            self._convert_arr_to_series(arr, pd_type, result_index)
-            for arr, pd_type in zip(results, type_list)
-        )
-        col_names = self._col_names_from_value_names(value_names)
+        if return_polars:
+            results = (
+                self._convert_arr_to_polars_series(arr, orig_type=orig_type)
+                for arr, orig_type in zip(results, type_list)
+            )
+            col_names = self._col_names_from_value_names(value_names)
 
-        result_df = pd.DataFrame(
-            dict(zip(col_names, results)),
-            copy=False,
-        )
+            result_df = pl.DataFrame(
+                dict(zip(col_names, results)),
+            )
+        else:
+            results = (
+                self._convert_arr_to_pandas_series(arr, orig_type, result_index)
+                for arr, orig_type in zip(results, type_list)
+            )
+            col_names = self._col_names_from_value_names(value_names)
+
+            result_df = pd.DataFrame(
+                dict(zip(col_names, results)),
+                copy=False,
+            )
         result = self._maybe_squeeze_to_1d(result_df, values, len(value_list))
 
         return result
@@ -1961,13 +2023,20 @@ class GroupBy:
         )
         results = parallel_map(func, arg_dict.values())
 
-        result_dict = {}
-        for key, result, pd_type in zip(arg_dict, results, type_list):
-            result_dict[key] = self._convert_arr_to_series(
-                result, pd_type, common_index
-            )
+        return_polars = self._values_is_polars(type_list)
 
-        result = pd.DataFrame(result_dict)
+        result_dict = {}
+        if return_polars:
+            for key, result, dtype in zip(arg_dict, results, type_list):
+                result_dict[key] = self._convert_arr_to_polars_series(result, dtype)
+            result = pl.DataFrame(result_dict)
+        else:
+            for key, result, dtype in zip(arg_dict, results, type_list):
+                result_dict[key] = self._convert_arr_to_pandas_series(
+                    result, dtype, common_index
+                )
+            result = pd.DataFrame(result_dict)
+
         result = self._maybe_squeeze_to_1d(
             result, values=values, n_values=len(arg_dict)
         )
@@ -2049,7 +2118,6 @@ class GroupBy:
         return GroupBy._apply_rolling_or_cumulative_func(
             func_name="rolling_max", **locals()
         )
-
 
     _CUMULATIVE_GB_DOCSTRING = """
         Calculate cumulative {method} of values in each group.
