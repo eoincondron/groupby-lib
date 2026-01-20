@@ -130,6 +130,7 @@ jobs:
     needs: [validate-release, build-and-test]
     if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_pypi == 'true')
     permissions:
+      contents: read
       id-token: write  # Required for OIDC token retrieval
     environment:
       name: pypi
