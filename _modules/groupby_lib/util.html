@@ -1,0 +1,1618 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>groupby_lib.util &mdash; groupby-lib 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            groupby-lib
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../contributing.html">Contributing</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">groupby-lib</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">groupby_lib.util</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for groupby_lib.util</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">concurrent.futures</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">reduce</span><span class="p">,</span> <span class="n">wraps</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">inspect</span><span class="w"> </span><span class="kn">import</span> <span class="n">signature</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">TypeVar</span><span class="p">,</span> <span class="n">Union</span><span class="p">,</span> <span class="n">cast</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numba</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nb</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">polars</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pl</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pyarrow</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pa</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">numba.core.extending</span><span class="w"> </span><span class="kn">import</span> <span class="n">overload</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">numba.typed</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span> <span class="k">as</span> <span class="n">NumbaList</span>
+
+<span class="n">T</span> <span class="o">=</span> <span class="n">TypeVar</span><span class="p">(</span><span class="s2">&quot;T&quot;</span><span class="p">)</span>
+<span class="n">R</span> <span class="o">=</span> <span class="n">TypeVar</span><span class="p">(</span><span class="s2">&quot;R&quot;</span><span class="p">)</span>
+<span class="n">F</span> <span class="o">=</span> <span class="n">TypeVar</span><span class="p">(</span><span class="s2">&quot;F&quot;</span><span class="p">,</span> <span class="n">bound</span><span class="o">=</span><span class="n">Callable</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span>
+
+<span class="n">MIN_INT</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">iinfo</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span><span class="o">.</span><span class="n">min</span>
+<span class="n">MAX_INT</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">iinfo</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span><span class="o">.</span><span class="n">max</span>
+
+<span class="n">ArrayType1D</span> <span class="o">=</span> <span class="n">Union</span><span class="p">[</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span>
+    <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span>
+    <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">,</span>
+    <span class="n">pd</span><span class="o">.</span><span class="n">Categorical</span><span class="p">,</span>
+    <span class="n">pa</span><span class="o">.</span><span class="n">ChunkedArray</span><span class="p">,</span>
+    <span class="n">pa</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="n">ArrayType2D</span> <span class="o">=</span> <span class="n">Union</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">MultiIndex</span><span class="p">]</span>
+
+
+<div class="viewcode-block" id="is_null">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.is_null">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_null</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check if a value is considered null/NA.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : scalar</span>
+<span class="sd">        Value to check</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    bool</span>
+<span class="sd">        True if value is null, False otherwise</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This function is overloaded with specialized implementations for</span>
+<span class="sd">    various numeric types via Numba&#39;s overload mechanism.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dtype</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">dtype</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+    <span class="k">elif</span> <span class="n">np</span><span class="o">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">x</span> <span class="o">==</span> <span class="n">MIN_INT</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+
+
+<div class="viewcode-block" id="jit_is_null">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.jit_is_null">[docs]</a>
+<span class="nd">@overload</span><span class="p">(</span><span class="n">is_null</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">jit_is_null</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">nb</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">Float</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="nb">float</span><span class="p">):</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">is_null</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">is_null</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">nb</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">Integer</span><span class="p">):</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">is_null</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">x</span> <span class="o">==</span> <span class="n">MIN_INT</span>
+
+        <span class="k">return</span> <span class="n">is_null</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">nb</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">Boolean</span><span class="p">):</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">is_null</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="k">return</span> <span class="n">is_null</span></div>
+
+
+
+<div class="viewcode-block" id="arr_is_null">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.arr_is_null">[docs]</a>
+<span class="nd">@nb</span><span class="o">.</span><span class="n">njit</span><span class="p">(</span><span class="n">parallel</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cache</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">arr_is_null</span><span class="p">(</span><span class="n">arr</span><span class="p">):</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">arr</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">nb</span><span class="o">.</span><span class="n">bool_</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">nb</span><span class="o">.</span><span class="n">prange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">arr</span><span class="p">)):</span>
+        <span class="n">out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">is_null</span><span class="p">(</span><span class="n">arr</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">out</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_null_value_for_numpy_type</span><span class="p">(</span><span class="n">np_type</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the appropriate null/NA value for the given array&#39;s dtype.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    np_type : np.dtype</span>
+<span class="sd">        Numpy dtype of the array</span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    scalar</span>
+<span class="sd">        Appropriate null value (min value for integers, NaN for floats, max for unsigned)</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    TypeError</span>
+<span class="sd">        If the array&#39;s dtype doesn&#39;t have a defined null representation</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">error</span> <span class="o">=</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No null value for </span><span class="si">{</span><span class="n">np_type</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">match</span> <span class="n">np_type</span><span class="o">.</span><span class="n">kind</span><span class="p">:</span>
+        <span class="k">case</span> <span class="s2">&quot;i&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">iinfo</span><span class="p">(</span><span class="n">np_type</span><span class="p">)</span><span class="o">.</span><span class="n">min</span>
+        <span class="k">case</span> <span class="s2">&quot;f&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np_type</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">case</span> <span class="s2">&quot;u&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">iinfo</span><span class="p">(</span><span class="n">np_type</span><span class="p">)</span><span class="o">.</span><span class="n">max</span>
+        <span class="k">case</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">timedelta64</span><span class="p">(</span><span class="s2">&quot;NaT&quot;</span><span class="p">,</span> <span class="s2">&quot;ns&quot;</span><span class="p">)</span>
+        <span class="k">case</span> <span class="s2">&quot;M&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">datetime64</span><span class="p">(</span><span class="s2">&quot;NaT&quot;</span><span class="p">,</span> <span class="s2">&quot;ns&quot;</span><span class="p">)</span>
+        <span class="k">case</span> <span class="s2">&quot;b&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">case</span><span class="w"> </span><span class="k">_</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">error</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_cast_timestamps_to_ints</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert datetime/timedelta arrays to int64 view for numba operations.</span>
+
+<span class="sd">    This function is essential for handling temporal types in numba-compiled functions,</span>
+<span class="sd">    which don&#39;t understand datetime64/timedelta64 types directly. It returns both the</span>
+<span class="sd">    int64 representation AND the original dtype to allow reconstruction after operations.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    arr : np.ndarray</span>
+<span class="sd">        Input numpy array, potentially with datetime64 or timedelta64 dtype</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    tuple of (np.ndarray, np.dtype)</span>
+<span class="sd">        - First element: Array as int64 view if temporal, otherwise unchanged</span>
+<span class="sd">        - Second element: Original dtype for type reconstruction</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This function only handles numpy arrays with &#39;M&#39; (datetime64) or &#39;m&#39; (timedelta64)</span>
+<span class="sd">    dtype kinds. For timezone-aware types or other pandas extension types, use</span>
+<span class="sd">    `_convert_timestamp_to_tz_unaware` instead.</span>
+
+<span class="sd">    The int64 view represents:</span>
+<span class="sd">    - For datetime64[ns]: Nanoseconds since Unix epoch (1970-01-01)</span>
+<span class="sd">    - For timedelta64[ns]: Duration in nanoseconds</span>
+
+<span class="sd">    This is a zero-copy operation - no data is duplicated in memory.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; dates = np.array([&#39;2020-01-01&#39;, &#39;2020-01-02&#39;], dtype=&#39;datetime64[ns]&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; int_view, orig_dtype = _cast_timestamps_to_ints(dates)</span>
+<span class="sd">    &gt;&gt;&gt; int_view.dtype</span>
+<span class="sd">    dtype(&#39;int64&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; orig_dtype</span>
+<span class="sd">    dtype(&#39;&lt;M8[ns]&#39;)</span>
+
+<span class="sd">    &gt;&gt;&gt; # Non-temporal arrays are returned unchanged</span>
+<span class="sd">    &gt;&gt;&gt; ints = np.array([1, 2, 3])</span>
+<span class="sd">    &gt;&gt;&gt; result, dtype = _cast_timestamps_to_ints(ints)</span>
+<span class="sd">    &gt;&gt;&gt; result is ints</span>
+<span class="sd">    True</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="ow">in</span> <span class="s2">&quot;mM&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">arr</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="s2">&quot;int64&quot;</span><span class="p">),</span> <span class="n">arr</span><span class="o">.</span><span class="n">dtype</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">arr</span><span class="p">,</span> <span class="n">arr</span><span class="o">.</span><span class="n">dtype</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_convert_timestamp_to_tz_unaware</span><span class="p">(</span><span class="n">val</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert timezone-aware timestamps and other pandas extension types to numpy representation.</span>
+
+<span class="sd">    This function handles the conversion of pandas Series/Index with timezone-aware datetime</span>
+<span class="sd">    types or PyArrow-backed types to numpy arrays, while preserving the original dtype</span>
+<span class="sd">    information. This is necessary because numba operations cannot work directly with</span>
+<span class="sd">    timezone-aware datetime types.</span>
+
+<span class="sd">    The conversion process:</span>
+<span class="sd">    1. For pandas objects with numpy backing: Extract underlying array + preserve dtype</span>
+<span class="sd">    2. For Arrow-backed types: Convert to numpy while preserving ArrowDtype metadata</span>
+<span class="sd">    3. For timezone-aware datetimes: Converts to UTC int64 nanoseconds + preserves timezone</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    val : pd.Index, pd.Series, np.ndarray, or ArrayType1D</span>
+<span class="sd">        Input value to convert. Can be:</span>
+<span class="sd">        - pandas Index/Series with numpy or Arrow backing</span>
+<span class="sd">        - Raw numpy array</span>
+<span class="sd">        - Any type supported by `to_arrow()`</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    tuple of (np.ndarray | pa.ChunkedArray, np.dtype | pd.ArrowDtype)</span>
+<span class="sd">        - First element: Numpy array or PyArrow ChunkedArray representation</span>
+<span class="sd">        - Second element: Original pandas dtype (including timezone info for datetimes)</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This function is a key part of the timezone-aware handling pipeline:</span>
+
+<span class="sd">    1. Timezone-aware timestamps are converted to UTC int64 nanoseconds</span>
+<span class="sd">    2. Numba operations work on the int64 representation</span>
+<span class="sd">    3. Results are converted back using the preserved dtype information</span>
+
+<span class="sd">    For pandas Series/Index backed by numpy arrays (the most common case), this is</span>
+<span class="sd">    a zero-copy operation that just extracts the underlying .values array.</span>
+
+<span class="sd">    For Arrow-backed data, chunked arrays are preserved as PyArrow ChunkedArray</span>
+<span class="sd">    to avoid unnecessary memory copying and concatenation.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import pandas as pd</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+
+<span class="sd">    # Timezone-aware datetime</span>
+<span class="sd">    &gt;&gt;&gt; dates = pd.date_range(&#39;2020-01-01&#39;, periods=3, tz=&#39;US/Eastern&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; arr, dtype = _convert_timestamp_to_tz_unaware(dates)</span>
+<span class="sd">    &gt;&gt;&gt; isinstance(arr, np.ndarray)  # Returns underlying numpy array</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; &#39;US/Eastern&#39; in str(dtype)  # Preserves timezone info</span>
+<span class="sd">    True</span>
+
+<span class="sd">    # Regular pandas Series with numpy backing (zero-copy)</span>
+<span class="sd">    &gt;&gt;&gt; series = pd.Series([1, 2, 3])</span>
+<span class="sd">    &gt;&gt;&gt; arr, dtype = _convert_timestamp_to_tz_unaware(series)</span>
+<span class="sd">    &gt;&gt;&gt; arr is series.values</span>
+<span class="sd">    True</span>
+
+<span class="sd">    # Arrow-backed data</span>
+<span class="sd">    &gt;&gt;&gt; import pyarrow as pa</span>
+<span class="sd">    &gt;&gt;&gt; arrow_arr = pa.array([1, 2, 3])</span>
+<span class="sd">    &gt;&gt;&gt; arr, dtype = _convert_timestamp_to_tz_unaware(arrow_arr)</span>
+<span class="sd">    &gt;&gt;&gt; isinstance(dtype, pd.ArrowDtype)</span>
+<span class="sd">    True</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    _cast_timestamps_to_ints : For simple numpy datetime64/timedelta64 conversion</span>
+<span class="sd">    _val_to_numpy : Main conversion function that uses this internally</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">orig_type</span> <span class="o">=</span> <span class="n">val</span><span class="o">.</span><span class="n">dtype</span> <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="s2">&quot;dtype&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="n">val</span><span class="o">.</span><span class="n">type</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">))</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
+        <span class="n">arr</span> <span class="o">=</span> <span class="n">val</span><span class="o">.</span><span class="n">values</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
+        <span class="n">arr</span> <span class="o">=</span> <span class="n">val</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">arrow</span> <span class="o">=</span> <span class="n">to_arrow</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">arrow</span><span class="p">,</span> <span class="s2">&quot;chunks&quot;</span><span class="p">):</span>
+            <span class="n">arr</span> <span class="o">=</span> <span class="n">pa</span><span class="o">.</span><span class="n">chunked_array</span><span class="p">([</span><span class="n">c</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">arrow</span><span class="o">.</span><span class="n">chunks</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">arr</span> <span class="o">=</span> <span class="n">arrow</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">arr</span><span class="p">,</span> <span class="n">orig_type</span>
+
+
+<div class="viewcode-block" id="check_data_inputs_aligned">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.check_data_inputs_aligned">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_data_inputs_aligned</span><span class="p">(</span>
+    <span class="o">*</span><span class="n">args_to_check</span><span class="p">,</span> <span class="n">check_index</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">F</span><span class="p">],</span> <span class="n">F</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Factory function that returns a decorator which ensures all arguments passed to the</span>
+<span class="sd">    decorated function have equal length and, if pandas objects and check_index is True,</span>
+<span class="sd">    share a common index.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        check_index: If True, also checks that pandas objects share the same index</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A decorator function</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">decorator</span><span class="p">(</span><span class="n">func</span><span class="p">:</span> <span class="n">F</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">F</span><span class="p">:</span>
+        <span class="nd">@wraps</span><span class="p">(</span><span class="n">func</span><span class="p">)</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+            <span class="n">arguments</span> <span class="o">=</span> <span class="n">signature</span><span class="p">(</span><span class="n">func</span><span class="p">)</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span><span class="o">.</span><span class="n">arguments</span>
+            <span class="n">lengths</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="c1"># Extract args that have a length</span>
+            <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">arguments</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">args_to_check</span> <span class="ow">or</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">args_to_check</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">x</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="n">lengths</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">lengths</span><span class="o">.</span><span class="n">values</span><span class="p">()))</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lengths</span><span class="p">)</span><span class="si">}</span><span class="s2"> must have equal length. &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;Got lengths: </span><span class="si">{</span><span class="n">lengths</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="p">)</span>
+
+            <span class="c1"># Check pandas objects share the same index</span>
+            <span class="k">if</span> <span class="n">check_index</span><span class="p">:</span>
+                <span class="n">pandas_args</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="n">arg</span> <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">args</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">))</span>
+                <span class="p">]</span>
+                <span class="k">if</span> <span class="n">pandas_args</span><span class="p">:</span>
+                    <span class="n">first_index</span> <span class="o">=</span> <span class="n">pandas_args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">index</span>
+                    <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">pandas_args</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
+                        <span class="k">if</span> <span class="ow">not</span> <span class="n">first_index</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">arg</span><span class="o">.</span><span class="n">index</span><span class="p">):</span>
+                            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                                <span class="s2">&quot;All pandas objects must share the same index&quot;</span>
+                            <span class="p">)</span>
+
+            <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">cast</span><span class="p">(</span><span class="n">F</span><span class="p">,</span> <span class="n">wrapper</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">decorator</span></div>
+
+
+
+<div class="viewcode-block" id="parallel_map">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.parallel_map">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">parallel_map</span><span class="p">(</span>
+    <span class="n">func</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">T</span><span class="p">],</span> <span class="n">R</span><span class="p">],</span>
+    <span class="n">arg_list</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">T</span><span class="p">],</span>
+    <span class="n">max_workers</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">use_threads</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">R</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply a function to each item in a list in parallel using concurrent.futures.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        func: The function to apply to each item</span>
+<span class="sd">        arg_list: List of items to process</span>
+<span class="sd">        max_workers: Maximum number of worker threads or processes (None = auto)</span>
+<span class="sd">        use_threads: If True, use threads; if False, use processes</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        List of results in the same order as the input items</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; def square(x):</span>
+<span class="sd">        ...     return x * x</span>
+<span class="sd">        &gt;&gt;&gt; parallel_map(square, [1, 2, 3, 4, 5])</span>
+<span class="sd">        [1, 4, 9, 16, 25]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">arg_list</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">arg_list</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">arg_list</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">arg_list</span><span class="p">[</span><span class="mi">0</span><span class="p">])]</span>
+
+    <span class="k">if</span> <span class="n">use_threads</span><span class="p">:</span>
+        <span class="n">Executor</span> <span class="o">=</span> <span class="n">concurrent</span><span class="o">.</span><span class="n">futures</span><span class="o">.</span><span class="n">ThreadPoolExecutor</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">Executor</span> <span class="o">=</span> <span class="n">concurrent</span><span class="o">.</span><span class="n">futures</span><span class="o">.</span><span class="n">ProcessPoolExecutor</span>
+
+    <span class="k">with</span> <span class="n">Executor</span><span class="p">(</span><span class="n">max_workers</span><span class="o">=</span><span class="n">max_workers</span><span class="p">)</span> <span class="k">as</span> <span class="n">executor</span><span class="p">:</span>
+        <span class="c1"># Submit all tasks and store the future objects</span>
+        <span class="n">future_to_index</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">executor</span><span class="o">.</span><span class="n">submit</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">args</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">arg_list</span><span class="p">)</span>
+        <span class="p">}</span>
+
+        <span class="c1"># Collect results in the original order</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">arg_list</span><span class="p">)</span>
+
+        <span class="c1"># Process completed futures as they finish</span>
+        <span class="k">for</span> <span class="n">future</span> <span class="ow">in</span> <span class="n">concurrent</span><span class="o">.</span><span class="n">futures</span><span class="o">.</span><span class="n">as_completed</span><span class="p">(</span><span class="n">future_to_index</span><span class="p">):</span>
+            <span class="n">index</span> <span class="o">=</span> <span class="n">future_to_index</span><span class="p">[</span><span class="n">future</span><span class="p">]</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">results</span><span class="p">[</span><span class="n">index</span><span class="p">]</span> <span class="o">=</span> <span class="n">future</span><span class="o">.</span><span class="n">result</span><span class="p">()</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Item at index </span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s2"> generated an exception: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">raise</span>
+
+    <span class="k">return</span> <span class="n">results</span></div>
+
+
+
+<div class="viewcode-block" id="n_threads_from_array_length">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.n_threads_from_array_length">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">n_threads_from_array_length</span><span class="p">(</span><span class="n">arr_len</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate a reasonable number of threads based on array length.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    arr_len : int</span>
+<span class="sd">        Length of the array to be processed</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    int</span>
+<span class="sd">        Number of threads to use (at least 1, at most 2*cpu_count-2)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="nb">min</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">arr_len</span> <span class="o">//</span> <span class="nb">int</span><span class="p">(</span><span class="mf">2e6</span><span class="p">)),</span> <span class="n">os</span><span class="o">.</span><span class="n">cpu_count</span><span class="p">()</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="parallel_reduce">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.parallel_reduce">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">parallel_reduce</span><span class="p">(</span><span class="n">reducer</span><span class="p">,</span> <span class="n">reduce_func_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">chunked_args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply reduction function in parallel and combine results.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    reducer : callable</span>
+<span class="sd">        Function to apply to each chunk of data</span>
+<span class="sd">    reduce_func_name : str</span>
+<span class="sd">        Name of the reduction function (&#39;count&#39;, &#39;sum&#39;, &#39;max&#39;, etc.)</span>
+<span class="sd">    chunked_args : list</span>
+<span class="sd">        Arguments for the reducer function split into chunks</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    array-like</span>
+<span class="sd">        Combined result after applying the reduction function to all chunks</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If the reduction function is not supported for parallel execution</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">reduce_func_vec</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+            <span class="n">count</span><span class="o">=</span><span class="n">operator</span><span class="o">.</span><span class="n">add</span><span class="p">,</span>
+            <span class="nb">sum</span><span class="o">=</span><span class="n">operator</span><span class="o">.</span><span class="n">add</span><span class="p">,</span>
+            <span class="n">sum_square</span><span class="o">=</span><span class="n">operator</span><span class="o">.</span><span class="n">add</span><span class="p">,</span>
+            <span class="nb">max</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">,</span>
+            <span class="nb">min</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">,</span>
+        <span class="p">)[</span><span class="n">reduce_func_name</span><span class="p">]</span>
+    <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Multi-threading not supported for </span><span class="si">{</span><span class="n">reduce_func_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">parallel_map</span><span class="p">(</span><span class="n">reducer</span><span class="p">,</span> <span class="n">chunked_args</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">reduce</span><span class="p">(</span><span class="n">reduce_func_vec</span><span class="p">,</span> <span class="n">results</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_first_non_null</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="n">T</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Find the first non-null value in an array. Return its location and value</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    arr : array-like</span>
+<span class="sd">        Array to search for non-null values</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    tuple</span>
+<span class="sd">        (index, value) of first non-null value, or (-1, np.nan) if all values are null</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This function is JIT-compiled with Numba for performance.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">arr</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">is_null</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">i</span><span class="p">,</span> <span class="n">x</span>
+    <span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+
+<div class="viewcode-block" id="jit_get_first_non_null">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.jit_get_first_non_null">[docs]</a>
+<span class="nd">@overload</span><span class="p">(</span><span class="n">_get_first_non_null</span><span class="p">,</span> <span class="n">nogil</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">jit_get_first_non_null</span><span class="p">(</span><span class="n">arr</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arr</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">nb</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">Float</span><span class="p">):</span>
+
+        <span class="k">return</span> <span class="n">_get_first_non_null</span>
+
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arr</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">nb</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">Integer</span><span class="p">):</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">f</span><span class="p">(</span><span class="n">arr</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">arr</span><span class="p">):</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">is_null</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+                    <span class="k">return</span> <span class="n">i</span><span class="p">,</span> <span class="n">x</span>
+            <span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">MIN_INT</span>
+
+        <span class="k">return</span> <span class="n">f</span>
+
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arr</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">nb</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">Boolean</span><span class="p">):</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">f</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+            <span class="k">return</span> <span class="mi">0</span><span class="p">,</span> <span class="n">arr</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="n">f</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_scalar_func_decorator</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+    <span class="k">return</span> <span class="nb">staticmethod</span><span class="p">(</span><span class="n">nb</span><span class="o">.</span><span class="n">njit</span><span class="p">(</span><span class="n">nogil</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cache</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">inline</span><span class="o">=</span><span class="s2">&quot;always&quot;</span><span class="p">)(</span><span class="n">func</span><span class="p">))</span>
+
+
+<div class="viewcode-block" id="NumbaReductionOps">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.NumbaReductionOps">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NumbaReductionOps</span><span class="p">:</span>
+
+<div class="viewcode-block" id="NumbaReductionOps.count">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.NumbaReductionOps.count">[docs]</a>
+    <span class="nd">@_scalar_func_decorator</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">count</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">x</span> <span class="o">+</span> <span class="mi">1</span></div>
+
+
+<div class="viewcode-block" id="NumbaReductionOps.min">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.NumbaReductionOps.min">[docs]</a>
+    <span class="nd">@_scalar_func_decorator</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">min</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">x</span> <span class="k">if</span> <span class="n">x</span> <span class="o">&lt;=</span> <span class="n">y</span> <span class="k">else</span> <span class="n">y</span></div>
+
+
+<div class="viewcode-block" id="NumbaReductionOps.max">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.NumbaReductionOps.max">[docs]</a>
+    <span class="nd">@_scalar_func_decorator</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">max</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">x</span> <span class="k">if</span> <span class="n">x</span> <span class="o">&gt;=</span> <span class="n">y</span> <span class="k">else</span> <span class="n">y</span></div>
+
+
+<div class="viewcode-block" id="NumbaReductionOps.sum">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.NumbaReductionOps.sum">[docs]</a>
+    <span class="nd">@_scalar_func_decorator</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sum</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">x</span> <span class="o">+</span> <span class="n">y</span></div>
+
+
+<div class="viewcode-block" id="NumbaReductionOps.first">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.NumbaReductionOps.first">[docs]</a>
+    <span class="nd">@_scalar_func_decorator</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">first</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">x</span></div>
+
+
+<div class="viewcode-block" id="NumbaReductionOps.first_skipna">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.NumbaReductionOps.first_skipna">[docs]</a>
+    <span class="nd">@_scalar_func_decorator</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">first_skipna</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">y</span> <span class="k">if</span> <span class="n">is_null</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">else</span> <span class="n">x</span></div>
+
+
+<div class="viewcode-block" id="NumbaReductionOps.last">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.NumbaReductionOps.last">[docs]</a>
+    <span class="nd">@_scalar_func_decorator</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">last</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">y</span></div>
+
+
+<div class="viewcode-block" id="NumbaReductionOps.last_skipna">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.NumbaReductionOps.last_skipna">[docs]</a>
+    <span class="nd">@_scalar_func_decorator</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">last_skipna</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">x</span> <span class="k">if</span> <span class="n">is_null</span><span class="p">(</span><span class="n">y</span><span class="p">)</span> <span class="k">else</span> <span class="n">y</span></div>
+
+
+<div class="viewcode-block" id="NumbaReductionOps.sum_square">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.NumbaReductionOps.sum_square">[docs]</a>
+    <span class="nd">@_scalar_func_decorator</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sum_square</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">x</span> <span class="o">+</span> <span class="n">y</span><span class="o">**</span><span class="mi">2</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="get_array_name">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.get_array_name">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_array_name</span><span class="p">(</span>
+    <span class="n">array</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">ChunkedArray</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">Array</span><span class="p">],</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the name attribute of an array if it exists and is not empty.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    array : Union[np.ndarray, pd.Series, pl.Series]</span>
+<span class="sd">        Array-like object to get name from</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    str or None</span>
+<span class="sd">        The name of the array if it exists and is not empty, otherwise None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">array</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">name</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">name</span></div>
+
+
+
+<div class="viewcode-block" id="to_arrow">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.to_arrow">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">to_arrow</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="n">ArrayType1D</span><span class="p">,</span> <span class="n">zero_copy_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pa</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="n">pa</span><span class="o">.</span><span class="n">ChunkedArray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert various array types to PyArrow Array or ChunkedArray with minimal copying.</span>
+
+<span class="sd">    This function provides a unified interface for converting different array-like objects</span>
+<span class="sd">    (NumPy arrays, pandas Series/Index/Categorical, polars Series, and PyArrow structures)</span>
+<span class="sd">    to PyArrow format. It aims to minimize memory copying by leveraging zero-copy</span>
+<span class="sd">    conversions where possible.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    a : ArrayType1D</span>
+<span class="sd">        Input array to convert. Can be one of:</span>
+<span class="sd">        - numpy.ndarray</span>
+<span class="sd">        - pandas.Series, pandas.Index, pandas.Categorical</span>
+<span class="sd">        - polars.Series</span>
+<span class="sd">        - pyarrow.Array, pyarrow.ChunkedArray</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pa.Array or pa.ChunkedArray</span>
+<span class="sd">        PyArrow representation of the input array. Returns pa.ChunkedArray for</span>
+<span class="sd">        inputs that are already chunked, pa.Array otherwise.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    TypeError</span>
+<span class="sd">        If the input type is not supported for conversion to PyArrow format.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Zero-copy conversions are attempted where possible:</span>
+<span class="sd">    - PyArrow Array/ChunkedArray: Returns input directly (no copy)</span>
+<span class="sd">    - Polars Series: Uses polars&#39; built-in to_arrow() method (zero-copy)</span>
+<span class="sd">    - Pandas with ArrowDtype: Uses PyArrow&#39;s from_pandas() (minimal copy)</span>
+<span class="sd">    - NumPy arrays: Uses PyArrow&#39;s array() constructor with zero_copy_only=False</span>
+
+<span class="sd">    For pandas Categorical data, the function converts to a PyArrow DictionaryArray</span>
+<span class="sd">    which preserves the categorical structure while enabling efficient operations.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; import pandas as pd</span>
+<span class="sd">    &gt;&gt;&gt; import pyarrow as pa</span>
+<span class="sd">    &gt;&gt;&gt; from groupby_lib.util import to_arrow</span>
+
+<span class="sd">    NumPy array conversion:</span>
+<span class="sd">    &gt;&gt;&gt; arr = np.array([1, 2, 3, 4, 5])</span>
+<span class="sd">    &gt;&gt;&gt; arrow_arr = to_arrow(arr)</span>
+<span class="sd">    &gt;&gt;&gt; type(arrow_arr)</span>
+<span class="sd">    &lt;class &#39;pyarrow.lib.Int64Array&#39;&gt;</span>
+
+<span class="sd">    Pandas Series conversion:</span>
+<span class="sd">    &gt;&gt;&gt; series = pd.Series([1.1, 2.2, 3.3])</span>
+<span class="sd">    &gt;&gt;&gt; arrow_arr = to_arrow(series)</span>
+<span class="sd">    &gt;&gt;&gt; type(arrow_arr)</span>
+<span class="sd">    &lt;class &#39;pyarrow.lib.DoubleArray&#39;&gt;</span>
+
+<span class="sd">    Categorical conversion:</span>
+<span class="sd">    &gt;&gt;&gt; cat = pd.Categorical([&#39;a&#39;, &#39;b&#39;, &#39;a&#39;, &#39;c&#39;])</span>
+<span class="sd">    &gt;&gt;&gt; arrow_arr = to_arrow(cat)</span>
+<span class="sd">    &gt;&gt;&gt; type(arrow_arr)</span>
+<span class="sd">    &lt;class &#39;pyarrow.lib.DictionaryArray&#39;&gt;</span>
+
+<span class="sd">    PyArrow pass-through (no copy):</span>
+<span class="sd">    &gt;&gt;&gt; pa_arr = pa.array([1, 2, 3])</span>
+<span class="sd">    &gt;&gt;&gt; result = to_arrow(pa_arr)</span>
+<span class="sd">    &gt;&gt;&gt; result is pa_arr  # Same object, no copy</span>
+<span class="sd">    True</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">a</span><span class="o">.</span><span class="n">to_arrow</span><span class="p">()</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">core</span><span class="o">.</span><span class="n">base</span><span class="o">.</span><span class="n">PandasObject</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">ArrowDtype</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">pa</span><span class="o">.</span><span class="n">Array</span><span class="o">.</span><span class="n">from_pandas</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>  <span class="c1"># type: ignore</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">CategoricalDtype</span><span class="p">):</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">pa</span><span class="o">.</span><span class="n">DictionaryArray</span><span class="o">.</span><span class="n">from_arrays</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">cat</span><span class="o">.</span><span class="n">codes</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">a</span><span class="o">.</span><span class="n">cat</span><span class="o">.</span><span class="n">categories</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">zero_copy_only</span> <span class="ow">and</span> <span class="n">pd</span><span class="o">.</span><span class="n">api</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">is_bool_dtype</span><span class="p">(</span><span class="n">a</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Zero copy conversions not possible with boolean types&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">pa</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">a</span><span class="p">))</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">zero_copy_only</span> <span class="ow">and</span> <span class="n">a</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="nb">bool</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Zero copy conversions not possible with boolean types&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">pa</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="p">(</span><span class="n">pa</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">ChunkedArray</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="n">a</span>  <span class="c1"># ChunkedArray is already a PyArrow structure</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Cannot convert type </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">a</span><span class="p">)</span><span class="si">}</span><span class="s2"> to arrow&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="pandas_type_from_array">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.pandas_type_from_array">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">pandas_type_from_array</span><span class="p">(</span>
+    <span class="n">value</span><span class="p">:</span> <span class="n">ArrayType1D</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">api</span><span class="o">.</span><span class="n">extensions</span><span class="o">.</span><span class="n">ExtensionDtype</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extract pandas-compatible dtype from various array-like types.</span>
+
+<span class="sd">    This function provides a unified interface for obtaining pandas dtype information</span>
+<span class="sd">    from different array representations (NumPy, pandas, Polars, PyArrow). It&#39;s</span>
+<span class="sd">    particularly useful for type checking and type preservation when converting</span>
+<span class="sd">    between different array libraries.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    value : ArrayType1D</span>
+<span class="sd">        Input array-like object. Can be one of:</span>
+<span class="sd">        - pandas Series, Index, or Categorical</span>
+<span class="sd">        - polars Series</span>
+<span class="sd">        - PyArrow Array or ChunkedArray</span>
+<span class="sd">        - NumPy ndarray</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pd.api.extensions.ExtensionDtype or np.dtype</span>
+<span class="sd">        Pandas-compatible dtype representing the data type of the input array:</span>
+<span class="sd">        - For Polars Series: Returns pd.ArrowDtype wrapping the Arrow type</span>
+<span class="sd">        - For PyArrow arrays: Returns pd.ArrowDtype wrapping the Arrow type</span>
+<span class="sd">        - For pandas/NumPy arrays: Returns the existing .dtype attribute</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This function is essential for maintaining type consistency across the library,</span>
+<span class="sd">    especially when dealing with timezone-aware datetimes and other extension types</span>
+<span class="sd">    that need special handling.</span>
+
+<span class="sd">    For Polars Series, the function uses `[:0].to_arrow()` to extract the type without</span>
+<span class="sd">    converting the entire array (zero-copy type extraction).</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import pandas as pd</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; import polars as pl</span>
+<span class="sd">    &gt;&gt;&gt; import pyarrow as pa</span>
+
+<span class="sd">    # NumPy array</span>
+<span class="sd">    &gt;&gt;&gt; arr = np.array([1, 2, 3])</span>
+<span class="sd">    &gt;&gt;&gt; dtype = pandas_type_from_array(arr)</span>
+<span class="sd">    &gt;&gt;&gt; dtype</span>
+<span class="sd">    dtype(&#39;int64&#39;)</span>
+
+<span class="sd">    # Pandas Series</span>
+<span class="sd">    &gt;&gt;&gt; series = pd.Series([1.0, 2.0, 3.0])</span>
+<span class="sd">    &gt;&gt;&gt; dtype = pandas_type_from_array(series)</span>
+<span class="sd">    &gt;&gt;&gt; dtype</span>
+<span class="sd">    dtype(&#39;float64&#39;)</span>
+
+<span class="sd">    # Polars Series</span>
+<span class="sd">    &gt;&gt;&gt; pl_series = pl.Series([1, 2, 3])</span>
+<span class="sd">    &gt;&gt;&gt; dtype = pandas_type_from_array(pl_series)</span>
+<span class="sd">    &gt;&gt;&gt; isinstance(dtype, pd.ArrowDtype)</span>
+<span class="sd">    True</span>
+
+<span class="sd">    # PyArrow Array</span>
+<span class="sd">    &gt;&gt;&gt; arrow_arr = pa.array([1, 2, 3])</span>
+<span class="sd">    &gt;&gt;&gt; dtype = pandas_type_from_array(arrow_arr)</span>
+<span class="sd">    &gt;&gt;&gt; isinstance(dtype, pd.ArrowDtype)</span>
+<span class="sd">    True</span>
+
+<span class="sd">    # Timezone-aware datetime</span>
+<span class="sd">    &gt;&gt;&gt; dates = pd.date_range(&#39;2020-01-01&#39;, periods=3, tz=&#39;US/Eastern&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; dtype = pandas_type_from_array(dates)</span>
+<span class="sd">    &gt;&gt;&gt; str(dtype)</span>
+<span class="sd">    &#39;datetime64[ns, US/Eastern]&#39;</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    series_is_numeric : Check if a series contains numeric data</span>
+<span class="sd">    series_is_timestamp : Check if a series contains timestamp data</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">ArrowDtype</span><span class="p">(</span><span class="n">value</span><span class="p">[:</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">to_arrow</span><span class="p">()</span><span class="o">.</span><span class="n">type</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="n">pa</span><span class="o">.</span><span class="n">ChunkedArray</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">Array</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">ArrowDtype</span><span class="p">(</span><span class="n">value</span><span class="o">.</span><span class="n">type</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">value</span><span class="o">.</span><span class="n">dtype</span></div>
+
+
+
+<div class="viewcode-block" id="series_is_numeric">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.series_is_numeric">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">series_is_numeric</span><span class="p">(</span><span class="n">series</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Series</span> <span class="o">|</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check if a series contains numeric or temporal data suitable for numeric operations.</span>
+
+<span class="sd">    This function determines whether a series can be used in numeric computations by</span>
+<span class="sd">    checking if its dtype is numeric (int, float, bool) or temporal (datetime, timedelta).</span>
+<span class="sd">    It explicitly excludes string, object, and categorical types.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    series : pl.Series or pd.Series</span>
+<span class="sd">        Input series to check. Can be either a Polars or pandas Series.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    bool</span>
+<span class="sd">        True if the series contains numeric or temporal data, False otherwise.</span>
+<span class="sd">        Returns False for:</span>
+<span class="sd">        - Object dtype (mixed types)</span>
+<span class="sd">        - Categorical dtype</span>
+<span class="sd">        - String dtype</span>
+<span class="sd">        - Dictionary/categorical types</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This function uses `pandas_type_from_array` internally to handle both Polars</span>
+<span class="sd">    and pandas Series uniformly.</span>
+
+<span class="sd">    Temporal types (datetime, timedelta) are considered &quot;numeric&quot; because they</span>
+<span class="sd">    can be converted to int64 and used in aggregation operations like min, max,</span>
+<span class="sd">    mean, etc.</span>
+
+<span class="sd">    Boolean types are considered numeric (can be used in sum, mean operations).</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import pandas as pd</span>
+<span class="sd">    &gt;&gt;&gt; import polars as pl</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+
+<span class="sd">    # Numeric types</span>
+<span class="sd">    &gt;&gt;&gt; series_is_numeric(pd.Series([1, 2, 3]))</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; series_is_numeric(pd.Series([1.0, 2.0, 3.0]))</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; series_is_numeric(pl.Series([1, 2, 3]))</span>
+<span class="sd">    True</span>
+
+<span class="sd">    # Boolean (considered numeric)</span>
+<span class="sd">    &gt;&gt;&gt; series_is_numeric(pd.Series([True, False, True]))</span>
+<span class="sd">    True</span>
+
+<span class="sd">    # Temporal types (considered numeric for aggregations)</span>
+<span class="sd">    &gt;&gt;&gt; dates = pd.date_range(&#39;2020-01-01&#39;, periods=3)</span>
+<span class="sd">    &gt;&gt;&gt; series_is_numeric(dates.to_series())</span>
+<span class="sd">    True</span>
+
+<span class="sd">    # Non-numeric types</span>
+<span class="sd">    &gt;&gt;&gt; series_is_numeric(pd.Series([&#39;a&#39;, &#39;b&#39;, &#39;c&#39;]))</span>
+<span class="sd">    False</span>
+<span class="sd">    &gt;&gt;&gt; series_is_numeric(pd.Series([&#39;a&#39;, &#39;b&#39;, &#39;c&#39;], dtype=&#39;category&#39;))</span>
+<span class="sd">    False</span>
+<span class="sd">    &gt;&gt;&gt; series_is_numeric(pd.Series([{&#39;a&#39;: 1}, {&#39;b&#39;: 2}]))</span>
+<span class="sd">    False</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    pandas_type_from_array : Extract pandas-compatible dtype from arrays</span>
+<span class="sd">    series_is_timestamp : Check specifically for timestamp types</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dtype</span> <span class="o">=</span> <span class="n">pandas_type_from_array</span><span class="p">(</span><span class="n">series</span><span class="p">)</span>
+    <span class="k">return</span> <span class="ow">not</span> <span class="p">(</span>
+        <span class="n">pd</span><span class="o">.</span><span class="n">api</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">is_object_dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dtype</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">CategoricalDtype</span><span class="p">)</span>
+        <span class="ow">or</span> <span class="n">pd</span><span class="o">.</span><span class="n">api</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">is_string_dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="ow">or</span> <span class="s2">&quot;dictionary&quot;</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="series_is_timestamp">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.series_is_timestamp">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">series_is_timestamp</span><span class="p">(</span><span class="n">series</span><span class="p">:</span> <span class="n">ArrayType1D</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check if an array-like object contains datetime/timestamp data.</span>
+
+<span class="sd">    This function determines whether the input contains datetime64 data, including</span>
+<span class="sd">    timezone-aware timestamps. It works uniformly across different array types</span>
+<span class="sd">    (pandas, Polars, PyArrow, NumPy).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    series : ArrayType1D</span>
+<span class="sd">        Input array-like object to check. Can be:</span>
+<span class="sd">        - pandas Series, Index, or DatetimeIndex</span>
+<span class="sd">        - Polars Series</span>
+<span class="sd">        - PyArrow Array or ChunkedArray</span>
+<span class="sd">        - NumPy ndarray</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    bool</span>
+<span class="sd">        True if the array contains datetime64 data (with or without timezone),</span>
+<span class="sd">        False otherwise.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This function uses `pandas_type_from_array` to extract dtype information</span>
+<span class="sd">    uniformly across different array types, then checks if it&#39;s a datetime64 type</span>
+<span class="sd">    using pandas&#39; `is_datetime64_dtype` utility.</span>
+
+<span class="sd">    The function returns True for:</span>
+<span class="sd">    - Timezone-naive datetime64 (e.g., &#39;datetime64[ns]&#39;)</span>
+<span class="sd">    - Timezone-aware datetime64 (e.g., &#39;datetime64[ns, US/Eastern]&#39;)</span>
+<span class="sd">    - Date types that are represented as datetime64</span>
+
+<span class="sd">    The function returns False for:</span>
+<span class="sd">    - Timedelta types (use a separate check for those)</span>
+<span class="sd">    - Date stored as strings or objects</span>
+<span class="sd">    - Numeric types (even if they represent Unix timestamps)</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import pandas as pd</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; import polars as pl</span>
+
+<span class="sd">    # Timezone-naive datetime</span>
+<span class="sd">    &gt;&gt;&gt; dates = pd.date_range(&#39;2020-01-01&#39;, periods=3)</span>
+<span class="sd">    &gt;&gt;&gt; series_is_timestamp(dates)</span>
+<span class="sd">    True</span>
+
+<span class="sd">    # Timezone-aware datetime</span>
+<span class="sd">    &gt;&gt;&gt; dates_tz = pd.date_range(&#39;2020-01-01&#39;, periods=3, tz=&#39;US/Eastern&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; series_is_timestamp(dates_tz)</span>
+<span class="sd">    True</span>
+
+<span class="sd">    # Polars datetime</span>
+<span class="sd">    &gt;&gt;&gt; pl_dates = pl.Series([pd.Timestamp(&#39;2020-01-01&#39;)])</span>
+<span class="sd">    &gt;&gt;&gt; series_is_timestamp(pl_dates)</span>
+<span class="sd">    True</span>
+
+<span class="sd">    # NumPy datetime64</span>
+<span class="sd">    &gt;&gt;&gt; np_dates = np.array([&#39;2020-01-01&#39;, &#39;2020-01-02&#39;], dtype=&#39;datetime64[ns]&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; series_is_timestamp(np_dates)</span>
+<span class="sd">    True</span>
+
+<span class="sd">    # Not a timestamp (timedelta)</span>
+<span class="sd">    &gt;&gt;&gt; timedeltas = pd.to_timedelta([&#39;1 day&#39;, &#39;2 days&#39;])</span>
+<span class="sd">    &gt;&gt;&gt; series_is_timestamp(timedeltas)</span>
+<span class="sd">    False</span>
+
+<span class="sd">    # Not a timestamp (string dates)</span>
+<span class="sd">    &gt;&gt;&gt; string_dates = pd.Series([&#39;2020-01-01&#39;, &#39;2020-01-02&#39;])</span>
+<span class="sd">    &gt;&gt;&gt; series_is_timestamp(string_dates)</span>
+<span class="sd">    False</span>
+
+<span class="sd">    # Not a timestamp (numeric)</span>
+<span class="sd">    &gt;&gt;&gt; numbers = pd.Series([1, 2, 3])</span>
+<span class="sd">    &gt;&gt;&gt; series_is_timestamp(numbers)</span>
+<span class="sd">    False</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    pandas_type_from_array : Extract pandas-compatible dtype from arrays</span>
+<span class="sd">    series_is_numeric : Check if a series contains numeric data</span>
+<span class="sd">    pd.api.types.is_datetime64_dtype : Underlying pandas type checking function</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">series</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="n">pl</span><span class="o">.</span><span class="n">Datetime</span>
+    <span class="n">dtype</span> <span class="o">=</span> <span class="n">pandas_type_from_array</span><span class="p">(</span><span class="n">series</span><span class="p">)</span>
+    <span class="c1"># Check for both timezone-naive and timezone-aware datetime types</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">pd</span><span class="o">.</span><span class="n">api</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">is_datetime64_dtype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dtype</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DatetimeTZDtype</span><span class="p">)</span>
+        <span class="ow">or</span> <span class="p">(</span>
+            <span class="nb">isinstance</span><span class="p">(</span><span class="n">dtype</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">ArrowDtype</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="n">pa</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">is_timestamp</span><span class="p">(</span><span class="n">dtype</span><span class="o">.</span><span class="n">pyarrow_dtype</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="is_pyarrow_backed">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.is_pyarrow_backed">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_pyarrow_backed</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="n">ArrayType1D</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check if an array-like object is backed by PyArrow.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    a : ArrayType1D</span>
+<span class="sd">        Input array-like object to check. Can be:</span>
+<span class="sd">        - pandas Series, Index, or Categorical</span>
+<span class="sd">        - Polars Series</span>
+<span class="sd">        - PyArrow Array or ChunkedArray</span>
+<span class="sd">        - NumPy ndarray</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    bool</span>
+<span class="sd">    True if the array is backed by PyArrow, False otherwise.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">core</span><span class="o">.</span><span class="n">base</span><span class="o">.</span><span class="n">PandasObject</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">ArrowDtype</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="p">(</span><span class="n">pa</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">ChunkedArray</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+
+
+<div class="viewcode-block" id="is_categorical">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.is_categorical">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_categorical</span><span class="p">(</span><span class="n">a</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">core</span><span class="o">.</span><span class="n">base</span><span class="o">.</span><span class="n">PandasObject</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">CategoricalDtype</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;dictionary&quot;</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">a</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="n">pl</span><span class="o">.</span><span class="n">Categorical</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">ChunkedArray</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">chunks</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">pa</span><span class="o">.</span><span class="n">DictionaryArray</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">DictionaryArray</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="array_split_with_chunk_handling">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.array_split_with_chunk_handling">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">array_split_with_chunk_handling</span><span class="p">(</span>
+    <span class="n">a</span><span class="p">:</span> <span class="n">ArrayType1D</span><span class="p">,</span> <span class="n">chunk_lengths</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Split an array into chunks with optimized handling for PyArrow ChunkedArrays.</span>
+
+<span class="sd">    This function efficiently splits arrays, with special optimizations for PyArrow</span>
+<span class="sd">    ChunkedArrays where the existing chunks align with the desired split boundaries.</span>
+<span class="sd">    When chunk boundaries align, it avoids expensive concatenation and re-splitting</span>
+<span class="sd">    operations by directly converting existing chunks to numpy arrays.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    arr : ArrayType1D</span>
+<span class="sd">        The array to split. Can be numpy array, pandas Series, PyArrow Array or</span>
+<span class="sd">        ChunkedArray, or any type supported by `to_arrow()`.</span>
+<span class="sd">    chunk_lengths : list of int</span>
+<span class="sd">        List of desired chunk lengths. Must sum to the total length of the array.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    list of numpy.ndarray</span>
+<span class="sd">        List of numpy arrays corresponding to the requested chunks.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If the sum of chunk_lengths does not equal the length of the input array.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; arr = np.array([1, 2, 3, 4, 5, 6])</span>
+<span class="sd">    &gt;&gt;&gt; chunk_lengths = [2, 3, 1]</span>
+<span class="sd">    &gt;&gt;&gt; chunks = array_split_with_chunk_handling(arr, chunk_lengths)</span>
+<span class="sd">    &gt;&gt;&gt; [chunk.tolist() for chunk in chunks]</span>
+<span class="sd">    [[1, 2], [3, 4, 5], [6]]</span>
+
+<span class="sd">    &gt;&gt;&gt; # Optimized case with PyArrow ChunkedArray</span>
+<span class="sd">    &gt;&gt;&gt; chunked_arr = pa.chunked_array([pa.array([1, 2]), pa.array([3, 4, 5]), pa.array([6])])</span>
+<span class="sd">    &gt;&gt;&gt; chunks = array_split_with_chunk_handling(chunked_arr, [2, 3, 1])</span>
+<span class="sd">    &gt;&gt;&gt; [chunk.tolist() for chunk in chunks]</span>
+<span class="sd">    [[1, 2], [3, 4, 5], [6]]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">sum</span><span class="p">(</span><span class="n">chunk_lengths</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Sum of chunk_lengths (</span><span class="si">{</span><span class="nb">sum</span><span class="p">(</span><span class="n">chunk_lengths</span><span class="p">)</span><span class="si">}</span><span class="s2">) must equal array length (</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">)</span><span class="si">}</span><span class="s2">). &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Got chunk_lengths: </span><span class="si">{</span><span class="n">chunk_lengths</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">chunk_lengths</span><span class="p">)[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">arr_list</span> <span class="o">=</span> <span class="n">_val_to_numpy</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">as_list</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">arr_list</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">arr_list</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">chunk_lengths</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="o">==</span> <span class="n">k</span> <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">arr_list</span><span class="p">,</span> <span class="n">chunk_lengths</span><span class="p">)</span>
+        <span class="p">):</span>
+            <span class="k">return</span> <span class="n">arr_list</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">arr_list</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">arr</span> <span class="o">=</span> <span class="n">arr_list</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array_split</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">offsets</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_val_to_numpy</span><span class="p">(</span>
+    <span class="n">val</span><span class="p">:</span> <span class="n">ArrayType1D</span><span class="p">,</span> <span class="n">as_list</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="n">NumbaList</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert various array types to numpy array.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    val : ArrayType1D</span>
+<span class="sd">        Input array to convert (numpy array, pandas Series, polars Series, etc.)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    np.ndarray | NumbaList[np.ndarray]</span>
+<span class="sd">        NumPy array representation of the input, as a list of arrays or a single array,</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">ArrayType1D</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Cannot convert input of type </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">val</span><span class="p">)</span><span class="si">}</span><span class="s2"> with ndim (</span><span class="si">{</span><span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">val</span><span class="p">)</span><span class="si">}</span><span class="s2">) to numpy vector&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="s2">&quot;dtype&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">as_list</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">NumbaList</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">val</span><span class="p">)])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">arrow</span><span class="p">:</span> <span class="n">pa</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">to_arrow</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+        <span class="n">is_chunked</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span>
+            <span class="n">arrow</span><span class="p">,</span>
+            <span class="n">pa</span><span class="o">.</span><span class="n">ChunkedArray</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+        <span class="n">is_chunked</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="k">if</span> <span class="n">is_chunked</span><span class="p">:</span>
+        <span class="n">val_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">chunk</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span> <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">arrow</span><span class="o">.</span><span class="n">chunks</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="s2">&quot;to_numpy&quot;</span><span class="p">):</span>
+        <span class="n">val_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">val</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()]</span>  <span class="c1"># type: ignore</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">val_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">val</span><span class="p">)]</span>
+
+    <span class="k">if</span> <span class="n">as_list</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">NumbaList</span><span class="p">(</span><span class="n">val_list</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">val_list</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">val_list</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="n">val_list</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">val</span>
+
+
+<div class="viewcode-block" id="convert_data_to_arr_list_and_keys">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.convert_data_to_arr_list_and_keys">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">convert_data_to_arr_list_and_keys</span><span class="p">(</span>
+    <span class="n">data</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">ArrayType1D</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert various array-like inputs to a dictionary of named arrays.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    data : Various types</span>
+<span class="sd">        Input arrays in various formats (Mapping, list/tuple of arrays, 2D array,</span>
+<span class="sd">        pandas/polars Series or DataFrame)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    dict</span>
+<span class="sd">        Dictionary mapping array names to arrays</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    TypeError</span>
+<span class="sd">        If the input type is not supported</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">):</span>
+        <span class="n">array</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">array</span><span class="o">.</span><span class="n">values</span><span class="p">()),</span> <span class="nb">list</span><span class="p">(</span><span class="n">array</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="nb">list</span><span class="p">)):</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;Could not convert list input containing scalars to an array&quot;</span>
+                <span class="p">)</span>
+            <span class="k">return</span> <span class="n">convert_data_to_arr_list_and_keys</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="n">names</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="n">get_array_name</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">data</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="n">names</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="ow">and</span> <span class="n">data</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">convert_data_to_arr_list_and_keys</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">T</span><span class="p">))</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span>
+        <span class="n">data</span><span class="p">,</span>
+        <span class="p">(</span>
+            <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span>
+            <span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+            <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">,</span>
+            <span class="n">pd</span><span class="o">.</span><span class="n">Categorical</span><span class="p">,</span>
+            <span class="n">pa</span><span class="o">.</span><span class="n">ChunkedArray</span><span class="p">,</span>
+            <span class="n">pa</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">):</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">get_array_name</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">data</span><span class="p">],</span> <span class="p">[</span><span class="n">name</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">):</span>
+            <span class="c1"># Collect LazyFrame to DataFrame first</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+        <span class="n">names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">data</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">names</span><span class="p">],</span> <span class="n">names</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Input type </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="si">}</span><span class="s2"> not supported&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="pretty_cut">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.pretty_cut">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">pretty_cut</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">ArrayType1D</span><span class="p">,</span> <span class="n">bins</span><span class="p">:</span> <span class="n">ArrayType1D</span> <span class="o">|</span> <span class="n">List</span><span class="p">,</span> <span class="n">precision</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a categorical with pretty labels by cutting data into bins.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : ArrayType1D</span>
+<span class="sd">        1-D array-like data to be binned. Can be np.ndarray, pd.Series,</span>
+<span class="sd">        pl.Series, pd.Index</span>
+<span class="sd">    bins : ArrayType1D or list</span>
+<span class="sd">        Monotonically increasing array of bin edges, defining the intervals.</span>
+<span class="sd">        Values will be sorted internally.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pd.Categorical or pd.Series</span>
+<span class="sd">        Categorical with human-readable interval labels. If input `x` is a</span>
+<span class="sd">        pd.Series, returns pd.Series with same index and name; otherwise</span>
+<span class="sd">        returns pd.Categorical.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The function creates interval labels with the following format:</span>
+<span class="sd">    - First bin: &quot; &lt;= {first_bin_edge}&quot;</span>
+<span class="sd">    - Middle bins: &quot;{left_edge + 1} - {right_edge}&quot; for integer data,</span>
+<span class="sd">                   &quot;{left_edge} - {right_edge}&quot; for float data</span>
+<span class="sd">    - Last bin: &quot; &gt; {last_bin_edge}&quot;</span>
+
+<span class="sd">    For integer data, the left edge is incremented by 1 to create</span>
+<span class="sd">    non-overlapping intervals. NaN values in float arrays are assigned</span>
+<span class="sd">    code -1 (missing category).</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; import pandas as pd</span>
+<span class="sd">    &gt;&gt;&gt; x = pd.Series([1, 5, 10, 15, 20])</span>
+<span class="sd">    &gt;&gt;&gt; bins = [5, 10, 15]</span>
+<span class="sd">    &gt;&gt;&gt; result = pretty_cut(x, bins)</span>
+<span class="sd">    &gt;&gt;&gt; result.categories</span>
+<span class="sd">    Index([&#39; &lt;= 5&#39;, &#39;6 - 10&#39;, &#39;11 - 15&#39;, &#39; &gt; 15&#39;], dtype=&#39;object&#39;)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">bins</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">bins</span><span class="p">)</span>
+    <span class="n">np_type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">dtype</span>
+    <span class="n">bins</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">bins</span><span class="p">)</span>
+    <span class="n">is_integer</span> <span class="o">=</span> <span class="n">np_type</span><span class="o">.</span><span class="n">kind</span> <span class="ow">in</span> <span class="s2">&quot;ui&quot;</span> <span class="ow">and</span> <span class="n">bins</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="ow">in</span> <span class="s2">&quot;ui&quot;</span>
+    <span class="n">is_float</span> <span class="o">=</span> <span class="n">np_type</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">&quot;f&quot;</span>
+    <span class="n">is_timedelta</span> <span class="o">=</span> <span class="n">np_type</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">&quot;m&quot;</span>
+
+    <span class="k">if</span> <span class="n">is_timedelta</span><span class="p">:</span>
+        <span class="n">numeric_bins</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_timedelta</span><span class="p">(</span><span class="n">bins</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">numeric_bins</span> <span class="o">=</span> <span class="n">bins</span>
+
+    <span class="n">sort_key</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">numeric_bins</span><span class="p">)</span>
+    <span class="n">bins</span> <span class="o">=</span> <span class="n">bins</span><span class="p">[</span><span class="n">sort_key</span><span class="p">]</span>
+    <span class="n">numeric_bins</span> <span class="o">=</span> <span class="n">numeric_bins</span><span class="p">[</span><span class="n">sort_key</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">precision</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">is_integer</span><span class="p">:</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">get_decimals</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="nb">int</span><span class="p">,</span> <span class="o">*</span><span class="n">decimals</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">decimals</span><span class="p">)</span>
+
+        <span class="n">precision</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="n">get_decimals</span><span class="p">,</span> <span class="n">bins</span><span class="p">))</span>
+
+    <span class="n">labels</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot; &lt;= </span><span class="si">{</span><span class="n">bins</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">left</span><span class="p">,</span> <span class="n">right</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">bins</span><span class="p">,</span> <span class="n">bins</span><span class="p">[</span><span class="mi">1</span><span class="p">:]):</span>
+        <span class="k">if</span> <span class="n">is_integer</span><span class="p">:</span>
+            <span class="n">left</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">left</span> <span class="o">+</span> <span class="n">is_integer</span><span class="p">)</span>
+            <span class="n">right</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">right</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">is_float</span><span class="p">:</span>
+            <span class="n">left</span><span class="p">,</span> <span class="n">right</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">x</span><span class="si">:</span><span class="s2">.</span><span class="si">{</span><span class="n">precision</span><span class="si">}</span><span class="s2">f</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="p">[</span><span class="n">left</span><span class="p">,</span> <span class="n">right</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">left</span> <span class="o">==</span> <span class="n">right</span><span class="p">:</span>
+            <span class="n">labels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">left</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">labels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">left</span><span class="si">}</span><span class="s2"> - </span><span class="si">{</span><span class="n">right</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">labels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot; &gt; </span><span class="si">{</span><span class="n">bins</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">codes</span> <span class="o">=</span> <span class="n">numeric_bins</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_integer</span><span class="p">:</span>
+        <span class="n">codes</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">isnull</span><span class="p">()]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Categorical</span><span class="o">.</span><span class="n">from_codes</span><span class="p">(</span><span class="n">codes</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">(</span><span class="n">labels</span><span class="p">))</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">):</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">out</span></div>
+
+
+
+<span class="nd">@nb</span><span class="o">.</span><span class="n">njit</span><span class="p">(</span><span class="n">parallel</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cache</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_nb_dot</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">b</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">out</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">nb</span><span class="o">.</span><span class="n">prange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">])):</span>
+        <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">nb</span><span class="o">.</span><span class="n">prange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">b</span><span class="p">)):</span>
+            <span class="n">out</span><span class="p">[</span><span class="n">row</span><span class="p">]</span> <span class="o">+=</span> <span class="n">a</span><span class="p">[</span><span class="n">col</span><span class="p">][</span><span class="n">row</span><span class="p">]</span> <span class="o">*</span> <span class="n">b</span><span class="p">[</span><span class="n">col</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+
+<div class="viewcode-block" id="nb_dot">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.nb_dot">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">nb_dot</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">],</span> <span class="n">b</span><span class="p">:</span> <span class="n">ArrayType1D</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="ow">and</span> <span class="n">a</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;a must be a 2-dimensional array or DataFrame&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">a</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">b</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;shapes </span><span class="si">{</span><span class="n">a</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2"> and </span><span class="si">{</span><span class="n">b</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2"> are not aligned. &quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
+        <span class="n">arr_list</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">T</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">arr_list</span> <span class="o">=</span> <span class="n">NumbaList</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="n">col</span><span class="p">])</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">a</span><span class="o">.</span><span class="n">columns</span><span class="p">])</span>
+
+    <span class="n">kinds</span> <span class="o">=</span> <span class="p">[</span><span class="n">a</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">arr_list</span><span class="p">]</span>
+    <span class="n">return_type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span> <span class="k">if</span> <span class="s2">&quot;f&quot;</span> <span class="ow">in</span> <span class="n">kinds</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">int64</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">):</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">return_type</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">_nb_dot</span><span class="p">(</span><span class="n">arr_list</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">b</span><span class="p">),</span> <span class="n">out</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">return_type</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">a</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span></div>
+
+
+
+<div class="viewcode-block" id="bools_to_categorical">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.bools_to_categorical">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">bools_to_categorical</span><span class="p">(</span>
+    <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">sep</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot; &amp; &quot;</span><span class="p">,</span> <span class="n">na_rep</span><span class="o">=</span><span class="s2">&quot;None&quot;</span><span class="p">,</span> <span class="n">allow_duplicates</span><span class="o">=</span><span class="kc">True</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert a boolean DataFrame to a categorical Series with combined labels.</span>
+
+<span class="sd">    This function creates a categorical representation where each unique row</span>
+<span class="sd">    pattern in the boolean DataFrame becomes a category. Column names where</span>
+<span class="sd">    True values occur are joined with a separator to form the category labels.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    df : pd.DataFrame</span>
+<span class="sd">        Boolean DataFrame where each column represents a feature/condition</span>
+<span class="sd">        and each row represents an observation.</span>
+<span class="sd">    sep : str, default &quot; &amp; &quot;</span>
+<span class="sd">        Separator string used to join column names when multiple columns</span>
+<span class="sd">        are True in the same row.</span>
+<span class="sd">    na_rep : str, default &quot;None&quot;</span>
+<span class="sd">        String representation for rows where all values are False.</span>
+<span class="sd">        Must not match any column name in the DataFrame.</span>
+<span class="sd">    allow_duplicates : bool, default True</span>
+<span class="sd">        If True, allows multiple True values per row (joined with separator).</span>
+<span class="sd">        If False, raises ValueError when any row has more than one True value.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pd.Series</span>
+<span class="sd">        Series with categorical dtype containing the combined labels.</span>
+<span class="sd">        Index matches the input DataFrame&#39;s index.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If `na_rep` matches any column name in the DataFrame, or if</span>
+<span class="sd">        `allow_duplicates` is False and any row contains multiple True values.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The function uses numpy.unique to identify distinct row patterns,</span>
+<span class="sd">    making it memory efficient for DataFrames with many repeated patterns.</span>
+
+<span class="sd">    Categories are created in the order they appear in the unique row patterns,</span>
+<span class="sd">    not necessarily in alphabetical order.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import pandas as pd</span>
+<span class="sd">    &gt;&gt;&gt; df = pd.DataFrame({</span>
+<span class="sd">    ...     &#39;A&#39;: [True, False, True, False],</span>
+<span class="sd">    ...     &#39;B&#39;: [False, True, False, True],</span>
+<span class="sd">    ...     &#39;C&#39;: [False, False, True, True]</span>
+<span class="sd">    ... })</span>
+<span class="sd">    &gt;&gt;&gt; result = bools_to_categorical(df)</span>
+<span class="sd">    &gt;&gt;&gt; result.cat.categories.tolist()</span>
+<span class="sd">    [&#39;A&#39;, &#39;B&#39;, &#39;A &amp; C&#39;, &#39;B &amp; C&#39;]</span>
+
+<span class="sd">    &gt;&gt;&gt; # Custom separator</span>
+<span class="sd">    &gt;&gt;&gt; result = bools_to_categorical(df, sep=&#39; | &#39;)</span>
+<span class="sd">    &gt;&gt;&gt; result[2]  # Row with A=True, C=True</span>
+<span class="sd">    &#39;A | C&#39;</span>
+
+<span class="sd">    &gt;&gt;&gt; # All False row handling</span>
+<span class="sd">    &gt;&gt;&gt; df_with_empty = pd.DataFrame({</span>
+<span class="sd">    ...     &#39;X&#39;: [True, False],</span>
+<span class="sd">    ...     &#39;Y&#39;: [False, False]</span>
+<span class="sd">    ... })</span>
+<span class="sd">    &gt;&gt;&gt; result = bools_to_categorical(df_with_empty, na_rep=&#39;Empty&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; result[1]</span>
+<span class="sd">    &#39;Empty&#39;</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">na_rep</span> <span class="ow">in</span> <span class="n">df</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;na_rep=</span><span class="si">{</span><span class="n">na_rep</span><span class="si">}</span><span class="s2"> clashes with one of the column names&quot;</span><span class="p">)</span>
+    <span class="n">min_bits</span> <span class="o">=</span> <span class="nb">min</span><span class="p">([</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">8</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">32</span><span class="p">,</span> <span class="mi">64</span><span class="p">]</span> <span class="k">if</span> <span class="n">x</span> <span class="o">&gt;</span> <span class="n">df</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]])</span>
+    <span class="n">bit_mask</span> <span class="o">=</span> <span class="n">nb_dot</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="mi">2</span> <span class="o">**</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;int</span><span class="si">{</span><span class="n">min_bits</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">))</span>
+    <span class="n">uniques</span><span class="p">,</span> <span class="n">codes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">bit_mask</span><span class="p">,</span> <span class="n">return_inverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">cats</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">bit_mask</span> <span class="ow">in</span> <span class="n">uniques</span><span class="p">:</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">col</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">bit_mask</span> <span class="o">&amp;</span> <span class="mi">2</span><span class="o">**</span><span class="n">i</span><span class="p">:</span>
+                <span class="n">labels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">col</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">labels</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">allow_duplicates</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;Some rows have more than one True value and allow_duplicates is False&quot;</span>
+                <span class="p">)</span>
+            <span class="n">cat</span> <span class="o">=</span> <span class="n">sep</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">cat</span> <span class="o">=</span> <span class="n">na_rep</span>
+        <span class="n">cats</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cat</span><span class="p">)</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Categorical</span><span class="o">.</span><span class="n">from_codes</span><span class="p">(</span><span class="n">codes</span><span class="p">,</span> <span class="n">cats</span><span class="p">)</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">out</span></div>
+
+
+
+<div class="viewcode-block" id="mean_from_sum_count">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.mean_from_sum_count">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">mean_from_sum_count</span><span class="p">(</span><span class="n">sum_</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">count</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute mean from sum and count, handling datetime and timedelta types.</span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    sum_ : pd.Series</span>
+<span class="sd">        Series containing the sum values.</span>
+<span class="sd">    count : pd.Series</span>
+<span class="sd">        Series containing the count values.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pd.Series</span>
+<span class="sd">    Series containing the computed mean values.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">sum_</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="ow">in</span> <span class="s2">&quot;mM&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">sum_</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">&quot;int64&quot;</span><span class="p">)</span> <span class="o">//</span> <span class="n">count</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">sum_</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">sum_</span> <span class="o">/</span> <span class="n">count</span></div>
+
+
+
+<div class="viewcode-block" id="argsort_index_numeric_only">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.argsort_index_numeric_only">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">argsort_index_numeric_only</span><span class="p">(</span><span class="n">index</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="nb">slice</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get lexsort indexer for Index, sorting only numeric levels.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    index : pd.Index</span>
+<span class="sd">        Index to sort.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    np.ndarray or slice</span>
+<span class="sd">        Array of indices that would sort the MultiIndex based on numeric levels only,</span>
+<span class="sd">        or slice(None) if no sorting is needed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">index</span><span class="o">.</span><span class="n">nlevels</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="nb">isinstance</span><span class="p">(</span><span class="n">index</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">CategoricalDtype</span><span class="p">)</span>
+            <span class="ow">or</span> <span class="n">index</span><span class="o">.</span><span class="n">is_monotonic_increasing</span>
+        <span class="p">):</span>
+            <span class="k">return</span> <span class="nb">slice</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">index</span><span class="o">.</span><span class="n">argsort</span><span class="p">()</span>
+
+    <span class="n">codes_for_sorting</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="c1"># For MultiIndex, only include non-categorical levels in sorting</span>
+    <span class="k">for</span> <span class="n">level</span><span class="p">,</span> <span class="n">codes</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">index</span><span class="o">.</span><span class="n">levels</span><span class="p">,</span> <span class="n">index</span><span class="o">.</span><span class="n">codes</span><span class="p">):</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="nb">isinstance</span><span class="p">(</span><span class="n">level</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">CategoricalDtype</span><span class="p">)</span>
+            <span class="ow">or</span> <span class="n">level</span><span class="o">.</span><span class="n">is_monotonic_increasing</span>
+        <span class="p">):</span>
+            <span class="c1"># Level values are sorted, use codes directly</span>
+            <span class="n">codes_for_sorting</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">codes</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Level values are not sorted, need to map codes through argsort</span>
+            <span class="n">codes_for_sorting</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">level</span><span class="o">.</span><span class="n">argsort</span><span class="p">())[</span><span class="n">codes</span><span class="p">])</span>
+
+    <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">core</span><span class="o">.</span><span class="n">sorting</span><span class="o">.</span><span class="n">lexsort_indexer</span><span class="p">(</span><span class="n">codes_for_sorting</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="check_if_func_is_non_reduce">
+<a class="viewcode-back" href="../../api_reference.html#groupby_lib.util.check_if_func_is_non_reduce">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_if_func_is_non_reduce</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+    <span class="n">arr_in</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">len_1</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">func</span><span class="p">(</span><span class="n">arr_in</span><span class="p">[:</span><span class="mi">1</span><span class="p">],</span> <span class="o">*</span><span class="n">args</span><span class="p">[</span><span class="mi">1</span><span class="p">:]))</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">arr_in</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">len_2</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">func</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="n">arr_in</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="o">*</span><span class="n">args</span><span class="p">[</span><span class="mi">1</span><span class="p">:]))</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">len_2</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">func</span><span class="p">(</span><span class="n">arr_in</span><span class="p">[:</span><span class="mi">2</span><span class="p">],</span> <span class="o">*</span><span class="n">args</span><span class="p">[</span><span class="mi">1</span><span class="p">:]))</span>
+
+    <span class="k">return</span> <span class="n">len_2</span> <span class="o">/</span> <span class="n">len_1</span> <span class="o">==</span> <span class="mi">2</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Eoin Condron.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

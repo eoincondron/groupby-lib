@@ -1,0 +1,288 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Examples &mdash; groupby-lib 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=01f34227"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Contributing" href="contributing.html" />
+    <link rel="prev" title="API Reference" href="api_reference.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            groupby-lib
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Examples</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#basic-aggregations">Basic Aggregations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#working-with-different-data-types">Working with Different Data Types</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#time-series-grouping">Time Series Grouping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#performance-optimization">Performance Optimization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#custom-aggregations">Custom Aggregations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#memory-efficient-operations">Memory Efficient Operations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#integration-with-plotting">Integration with Plotting</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">groupby-lib</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Examples</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/examples.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="examples">
+<h1>Examples<a class="headerlink" href="#examples" title="Link to this heading"></a></h1>
+<p>This section provides practical examples of using groupby-lib for various data analysis tasks.</p>
+<section id="basic-aggregations">
+<h2>Basic Aggregations<a class="headerlink" href="#basic-aggregations" title="Link to this heading"></a></h2>
+<p>Sum, Mean, and Count:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">groupby_lib.groupby</span><span class="w"> </span><span class="kn">import</span> <span class="n">GroupBy</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="c1"># Sample sales data</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s1">&#39;region&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;North&#39;</span><span class="p">,</span> <span class="s1">&#39;South&#39;</span><span class="p">,</span> <span class="s1">&#39;North&#39;</span><span class="p">,</span> <span class="s1">&#39;East&#39;</span><span class="p">,</span> <span class="s1">&#39;South&#39;</span><span class="p">,</span> <span class="s1">&#39;East&#39;</span><span class="p">],</span>
+    <span class="s1">&#39;sales&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">100</span><span class="p">,</span> <span class="mi">150</span><span class="p">,</span> <span class="mi">200</span><span class="p">,</span> <span class="mi">120</span><span class="p">,</span> <span class="mi">180</span><span class="p">,</span> <span class="mi">90</span><span class="p">],</span>
+    <span class="s1">&#39;quantity&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">9</span><span class="p">]</span>
+<span class="p">})</span>
+
+<span class="c1"># Group by region</span>
+<span class="n">gb</span> <span class="o">=</span> <span class="n">GroupBy</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s1">&#39;region&#39;</span><span class="p">])</span>
+
+<span class="n">total_sales</span> <span class="o">=</span> <span class="n">gb</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s1">&#39;sales&#39;</span><span class="p">])</span>
+<span class="n">avg_sales</span> <span class="o">=</span> <span class="n">gb</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s1">&#39;sales&#39;</span><span class="p">])</span>
+<span class="n">count_orders</span> <span class="o">=</span> <span class="n">gb</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Total sales by region:&quot;</span><span class="p">,</span> <span class="n">total_sales</span><span class="o">.</span><span class="n">values</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Average sales by region:&quot;</span><span class="p">,</span> <span class="n">avg_sales</span><span class="o">.</span><span class="n">values</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Order count by region:&quot;</span><span class="p">,</span> <span class="n">count_orders</span><span class="o">.</span><span class="n">values</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="working-with-different-data-types">
+<h2>Working with Different Data Types<a class="headerlink" href="#working-with-different-data-types" title="Link to this heading"></a></h2>
+<p>Numeric and Categorical Data:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Mixed data types</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s1">&#39;category&#39;</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Categorical</span><span class="p">([</span><span class="s1">&#39;A&#39;</span><span class="p">,</span> <span class="s1">&#39;B&#39;</span><span class="p">,</span> <span class="s1">&#39;A&#39;</span><span class="p">,</span> <span class="s1">&#39;C&#39;</span><span class="p">,</span> <span class="s1">&#39;B&#39;</span><span class="p">,</span> <span class="s1">&#39;A&#39;</span><span class="p">]),</span>
+    <span class="s1">&#39;values&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mf">1.5</span><span class="p">,</span> <span class="mf">2.3</span><span class="p">,</span> <span class="mf">1.8</span><span class="p">,</span> <span class="mf">3.2</span><span class="p">,</span> <span class="mf">2.1</span><span class="p">,</span> <span class="mf">1.9</span><span class="p">],</span>
+    <span class="s1">&#39;counts&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">12</span><span class="p">]</span>
+<span class="p">})</span>
+
+<span class="n">gb</span> <span class="o">=</span> <span class="n">GroupBy</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;category&#39;</span><span class="p">])</span>
+
+<span class="c1"># Multiple aggregations</span>
+<span class="n">results</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;sum_values&#39;</span><span class="p">:</span> <span class="n">gb</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;values&#39;</span><span class="p">]),</span>
+    <span class="s1">&#39;mean_values&#39;</span><span class="p">:</span> <span class="n">gb</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;values&#39;</span><span class="p">]),</span>
+    <span class="s1">&#39;total_counts&#39;</span><span class="p">:</span> <span class="n">gb</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;counts&#39;</span><span class="p">])</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="time-series-grouping">
+<h2>Time Series Grouping<a class="headerlink" href="#time-series-grouping" title="Link to this heading"></a></h2>
+<p>Grouping by Date Components:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Time series data</span>
+<span class="n">dates</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">date_range</span><span class="p">(</span><span class="s1">&#39;2023-01-01&#39;</span><span class="p">,</span> <span class="n">periods</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">freq</span><span class="o">=</span><span class="s1">&#39;D&#39;</span><span class="p">)</span>
+<span class="n">values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span><span class="o">.</span><span class="n">cumsum</span><span class="p">()</span>
+
+<span class="n">df_ts</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s1">&#39;date&#39;</span><span class="p">:</span> <span class="n">dates</span><span class="p">,</span>
+    <span class="s1">&#39;value&#39;</span><span class="p">:</span> <span class="n">values</span><span class="p">,</span>
+    <span class="s1">&#39;month&#39;</span><span class="p">:</span> <span class="n">dates</span><span class="o">.</span><span class="n">month</span><span class="p">,</span>
+    <span class="s1">&#39;weekday&#39;</span><span class="p">:</span> <span class="n">dates</span><span class="o">.</span><span class="n">day_name</span><span class="p">()</span>
+<span class="p">})</span>
+
+<span class="c1"># Group by month</span>
+<span class="n">gb_month</span> <span class="o">=</span> <span class="n">GroupBy</span><span class="p">(</span><span class="n">df_ts</span><span class="p">[</span><span class="s1">&#39;month&#39;</span><span class="p">])</span>
+<span class="n">monthly_avg</span> <span class="o">=</span> <span class="n">gb_month</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">df_ts</span><span class="p">[</span><span class="s1">&#39;value&#39;</span><span class="p">])</span>
+
+<span class="c1"># Group by weekday</span>
+<span class="n">gb_weekday</span> <span class="o">=</span> <span class="n">GroupBy</span><span class="p">(</span><span class="n">df_ts</span><span class="p">[</span><span class="s1">&#39;weekday&#39;</span><span class="p">])</span>
+<span class="n">weekday_avg</span> <span class="o">=</span> <span class="n">gb_weekday</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">df_ts</span><span class="p">[</span><span class="s1">&#39;value&#39;</span><span class="p">])</span>
+</pre></div>
+</div>
+</section>
+<section id="performance-optimization">
+<h2>Performance Optimization<a class="headerlink" href="#performance-optimization" title="Link to this heading"></a></h2>
+<p>Working with Large Datasets:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Generate large dataset</span>
+<span class="n">n</span> <span class="o">=</span> <span class="mi">5_000_000</span>
+<span class="n">groups</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10000</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+
+<span class="c1"># Convert to pandas for comparison</span>
+<span class="n">df_large</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s1">&#39;group&#39;</span><span class="p">:</span> <span class="n">groups</span><span class="p">,</span>
+    <span class="s1">&#39;value&#39;</span><span class="p">:</span> <span class="n">values</span>
+<span class="p">})</span>
+
+<span class="c1"># groupby-lib (optimized)</span>
+<span class="n">gb</span> <span class="o">=</span> <span class="n">GroupBy</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">groups</span><span class="p">))</span>
+<span class="n">fast_result</span> <span class="o">=</span> <span class="n">gb</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">values</span><span class="p">))</span>
+
+<span class="c1"># This is typically 2-5x faster than pandas.groupby()</span>
+</pre></div>
+</div>
+</section>
+<section id="custom-aggregations">
+<h2>Custom Aggregations<a class="headerlink" href="#custom-aggregations" title="Link to this heading"></a></h2>
+<p>Using Multiple Operations:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">groupby_lib.groupby</span><span class="w"> </span><span class="kn">import</span> <span class="n">GroupBy</span>
+
+<span class="c1"># Sample data</span>
+<span class="n">sales_data</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s1">&#39;store&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;A&#39;</span><span class="p">,</span> <span class="s1">&#39;B&#39;</span><span class="p">,</span> <span class="s1">&#39;A&#39;</span><span class="p">,</span> <span class="s1">&#39;C&#39;</span><span class="p">,</span> <span class="s1">&#39;B&#39;</span><span class="p">,</span> <span class="s1">&#39;A&#39;</span><span class="p">,</span> <span class="s1">&#39;C&#39;</span><span class="p">],</span>
+    <span class="s1">&#39;revenue&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1000</span><span class="p">,</span> <span class="mi">1500</span><span class="p">,</span> <span class="mi">800</span><span class="p">,</span> <span class="mi">1200</span><span class="p">,</span> <span class="mi">1800</span><span class="p">,</span> <span class="mi">900</span><span class="p">,</span> <span class="mi">1100</span><span class="p">],</span>
+    <span class="s1">&#39;customers&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">75</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">60</span><span class="p">,</span> <span class="mi">90</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">55</span><span class="p">]</span>
+<span class="p">})</span>
+
+<span class="n">gb</span> <span class="o">=</span> <span class="n">GroupBy</span><span class="p">(</span><span class="n">sales_data</span><span class="p">[</span><span class="s1">&#39;store&#39;</span><span class="p">])</span>
+
+<span class="c1"># Multiple metrics per group</span>
+<span class="n">store_metrics</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;total_revenue&#39;</span><span class="p">:</span> <span class="n">gb</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">sales_data</span><span class="p">[</span><span class="s1">&#39;revenue&#39;</span><span class="p">]),</span>
+    <span class="s1">&#39;avg_revenue&#39;</span><span class="p">:</span> <span class="n">gb</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">sales_data</span><span class="p">[</span><span class="s1">&#39;revenue&#39;</span><span class="p">]),</span>
+    <span class="s1">&#39;total_customers&#39;</span><span class="p">:</span> <span class="n">gb</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">sales_data</span><span class="p">[</span><span class="s1">&#39;customers&#39;</span><span class="p">]),</span>
+    <span class="s1">&#39;avg_customers&#39;</span><span class="p">:</span> <span class="n">gb</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">sales_data</span><span class="p">[</span><span class="s1">&#39;customers&#39;</span><span class="p">])</span>
+<span class="p">}</span>
+
+<span class="c1"># Create summary dataframe</span>
+<span class="n">summary</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s1">&#39;store&#39;</span><span class="p">:</span> <span class="n">store_metrics</span><span class="p">[</span><span class="s1">&#39;total_revenue&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">index</span><span class="p">,</span>
+    <span class="s1">&#39;total_revenue&#39;</span><span class="p">:</span> <span class="n">store_metrics</span><span class="p">[</span><span class="s1">&#39;total_revenue&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+    <span class="s1">&#39;avg_revenue&#39;</span><span class="p">:</span> <span class="n">store_metrics</span><span class="p">[</span><span class="s1">&#39;avg_revenue&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+    <span class="s1">&#39;total_customers&#39;</span><span class="p">:</span> <span class="n">store_metrics</span><span class="p">[</span><span class="s1">&#39;total_customers&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+    <span class="s1">&#39;avg_customers&#39;</span><span class="p">:</span> <span class="n">store_metrics</span><span class="p">[</span><span class="s1">&#39;avg_customers&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<span class="p">})</span>
+</pre></div>
+</div>
+</section>
+<section id="memory-efficient-operations">
+<h2>Memory Efficient Operations<a class="headerlink" href="#memory-efficient-operations" title="Link to this heading"></a></h2>
+<p>For very large datasets, consider chunked processing:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">process_large_file</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">chunk_size</span><span class="o">=</span><span class="mi">100_000</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Process large CSV in chunks with groupby-lib&quot;&quot;&quot;</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">chunksize</span><span class="o">=</span><span class="n">chunk_size</span><span class="p">):</span>
+        <span class="n">gb</span> <span class="o">=</span> <span class="n">GroupBy</span><span class="p">(</span><span class="n">chunk</span><span class="p">[</span><span class="s1">&#39;group_column&#39;</span><span class="p">])</span>
+        <span class="n">chunk_result</span> <span class="o">=</span> <span class="n">gb</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">chunk</span><span class="p">[</span><span class="s1">&#39;value_column&#39;</span><span class="p">])</span>
+        <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">chunk_result</span><span class="p">)</span>
+
+    <span class="c1"># Combine results (would need custom merging logic)</span>
+    <span class="k">return</span> <span class="n">results</span>
+</pre></div>
+</div>
+</section>
+<section id="integration-with-plotting">
+<h2>Integration with Plotting<a class="headerlink" href="#integration-with-plotting" title="Link to this heading"></a></h2>
+<p>Visualizing GroupBy Results:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">groupby_lib.plotting</span><span class="w"> </span><span class="kn">import</span> <span class="n">group_scatter</span>
+
+<span class="c1"># Group and plot results</span>
+<span class="n">gb</span> <span class="o">=</span> <span class="n">GroupBy</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s1">&#39;category&#39;</span><span class="p">])</span>
+<span class="n">means</span> <span class="o">=</span> <span class="n">gb</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s1">&#39;values&#39;</span><span class="p">])</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">6</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">bar</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">means</span><span class="p">)),</span> <span class="n">means</span><span class="o">.</span><span class="n">values</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Groups&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">&#39;Mean Values&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;Mean Values by Group&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+
+<span class="c1"># Use built-in plotting functions</span>
+<span class="n">group_scatter</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s1">&#39;category&#39;</span><span class="p">],</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;values&#39;</span><span class="p">],</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.7</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="api_reference.html" class="btn btn-neutral float-left" title="API Reference" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="contributing.html" class="btn btn-neutral float-right" title="Contributing" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Eoin Condron.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
