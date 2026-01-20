@@ -255,10 +255,11 @@ def _convert_timestamp_to_tz_unaware(val):
     _cast_timestamps_to_ints : For simple numpy datetime64/timedelta64 conversion
     _val_to_numpy : Main conversion function that uses this internally
     """
+    orig_type = val.dtype if hasattr(val, "dtype") else val.type
     if isinstance(val, (pd.Index, pd.Series)) and isinstance(val.values, np.ndarray):
-        return val.values, val.dtype
+        arr = val.values
     elif isinstance(val, np.ndarray):
-        return val, val.dtype
+        arr = val
     else:
         arrow = to_arrow(val)
         if hasattr(arrow, "chunks"):
@@ -266,7 +267,7 @@ def _convert_timestamp_to_tz_unaware(val):
         else:
             arr = arrow.to_numpy()
 
-        return arr, pd.ArrowDtype(arrow.type)
+    return arr, orig_type
 
 
 def check_data_inputs_aligned(
@@ -886,6 +887,8 @@ def series_is_timestamp(series: ArrayType1D):
     series_is_numeric : Check if a series contains numeric data
     pd.api.types.is_datetime64_dtype : Underlying pandas type checking function
     """
+    if isinstance(series, pl.Series):
+        return series.dtype == pl.Datetime
     dtype = pandas_type_from_array(series)
     # Check for both timezone-naive and timezone-aware datetime types
     return (

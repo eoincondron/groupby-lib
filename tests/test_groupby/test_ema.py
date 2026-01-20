@@ -146,6 +146,102 @@ class TestGroupByEma:
         )
         pd.testing.assert_series_equal(result, expected_masked)
 
+    def test_ema_time_weighted_tz_aware(self):
+        """Test time-weighted EMA with timezone-aware timestamps."""
+        key = pd.Series([1, 1, 1, 2, 2, 2])
+        values = pd.Series([1.0, 2.0, 3.0, 10.0, 20.0, 30.0])
+        # Create timezone-aware timestamps
+        times = pd.date_range("2024-01-01", periods=6, freq="1h", tz="UTC")
+        gb = GroupBy(key)
+
+        result = gb.ema(values, halflife="2h", times=times)
+
+        # Compute expected using ema_grouped
+        expected = ema_grouped(
+            gb.group_ikey, ngroups=2, values=values, halflife="2h", times=times
+        )
+        expected_series = pd.Series(expected, index=values.index, name=values.name)
+
+        pd.testing.assert_series_equal(result, expected_series)
+
+    def test_ema_time_weighted_tz_aware_different_timezones(self):
+        """Test time-weighted EMA with different timezone-aware timestamps."""
+        key = pd.Series([1, 1, 1, 2, 2, 2])
+        values = pd.Series([1.0, 2.0, 3.0, 10.0, 20.0, 30.0])
+        gb = GroupBy(key)
+
+        # Test with different timezones
+        for tz in ["US/Eastern", "Europe/London", "Asia/Tokyo"]:
+            times = pd.date_range("2024-01-01", periods=6, freq="1h", tz=tz)
+
+            result = gb.ema(values, halflife="2h", times=times)
+
+            # Compute expected using ema_grouped
+            expected = ema_grouped(
+                gb.group_ikey, ngroups=2, values=values, halflife="2h", times=times
+            )
+            expected_series = pd.Series(expected, index=values.index, name=values.name)
+
+            pd.testing.assert_series_equal(result, expected_series)
+
+    def test_ema_time_weighted_tz_aware_with_mask(self):
+        """Test time-weighted EMA with timezone-aware timestamps and mask."""
+        key = pd.Series([1, 1, 1, 2, 2, 2])
+        values = pd.Series([1.0, 2.0, 3.0, 10.0, 20.0, 30.0])
+        times = pd.date_range("2024-01-01", periods=6, freq="1h", tz="UTC")
+        mask = np.array([True, True, False, True, False, True])
+        gb = GroupBy(key)
+
+        result = gb.ema(values, halflife="2h", times=times, mask=mask)
+        expected_masked = gb.ema(
+            values.where(mask), halflife="2h", times=times, mask=mask
+        )
+        pd.testing.assert_series_equal(result, expected_masked)
+
+    def test_ema_time_weighted_tz_aware_irregular_intervals(self):
+        """Test time-weighted EMA with timezone-aware timestamps at irregular intervals."""
+        key = pd.Series([1, 1, 1, 2, 2, 2])
+        values = pd.Series([1.0, 2.0, 3.0, 10.0, 20.0, 30.0])
+
+        # Create irregular time intervals
+        base_time = pd.Timestamp("2024-01-01", tz="UTC")
+        times = pd.Series([
+            base_time,
+            base_time + pd.Timedelta(minutes=15),
+            base_time + pd.Timedelta(hours=2),
+            base_time + pd.Timedelta(minutes=5),
+            base_time + pd.Timedelta(hours=1),
+            base_time + pd.Timedelta(hours=3),
+        ])
+        gb = GroupBy(key)
+
+        result = gb.ema(values, halflife="1h", times=times)
+
+        # Compute expected using ema_grouped
+        expected = ema_grouped(
+            gb.group_ikey, ngroups=2, values=values, halflife="1h", times=times
+        )
+        expected_series = pd.Series(expected, index=values.index, name=values.name)
+
+        pd.testing.assert_series_equal(result, expected_series)
+
+    def test_ema_time_weighted_tz_aware_vs_naive_equivalence(self):
+        """Test that TZ-aware and TZ-naive timestamps give equivalent results."""
+        key = pd.Series([1, 1, 1, 2, 2, 2])
+        values = pd.Series([1.0, 2.0, 3.0, 10.0, 20.0, 30.0])
+        gb = GroupBy(key)
+
+        # Create TZ-naive timestamps
+        times_naive = pd.date_range("2024-01-01", periods=6, freq="1h")
+        result_naive = gb.ema(values, halflife="2h", times=times_naive)
+
+        # Create TZ-aware timestamps (same absolute times)
+        times_aware = times_naive.tz_localize("UTC")
+        result_aware = gb.ema(values, halflife="2h", times=times_aware)
+
+        # Results should be equivalent
+        pd.testing.assert_series_equal(result_naive, result_aware)
+
     def test_ema_single_group(self):
         """Test EMA with only one group."""
         key = pd.Series([1, 1, 1, 1, 1])

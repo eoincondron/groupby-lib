@@ -1780,7 +1780,7 @@ class TestConvertTimestampToTzUnaware:
         arr, dtype = _convert_timestamp_to_tz_unaware(arrow_arr)
 
         assert isinstance(arr, np.ndarray)
-        assert isinstance(dtype, pd.ArrowDtype)
+        assert isinstance(dtype, pa.DataType)
 
     def test_arrow_chunked_array_preservation(self):
         """Test that Arrow chunked arrays are preserved."""
@@ -1791,7 +1791,7 @@ class TestConvertTimestampToTzUnaware:
         arr, dtype = _convert_timestamp_to_tz_unaware(chunked)
 
         assert isinstance(arr, pa.ChunkedArray)
-        assert isinstance(dtype, pd.ArrowDtype)
+        assert isinstance(dtype, pa.DataType)
 
 
 class TestPandasTypeFromArray:
