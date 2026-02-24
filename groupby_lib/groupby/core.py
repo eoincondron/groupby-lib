@@ -1225,9 +1225,50 @@ class GroupBy:
             mask=mask, margins=margins, transform=transform, observed_only=observed_only
         )
         sq_sum = self._apply_gb_reduction("sum_squares", values=values, **kwargs)
-        sum_sq = self.sum(values=values, **kwargs).to_numpy().astype(np.float64) ** 2
+        sum_ = self.sum(values=values, **kwargs)
         count = self.count(values=values, **kwargs)
-        return (sq_sum - sum_sq / count) / (count - ddof)
+
+        def _compute_variance_from_sums_polars(
+            sum_: pl.Series, sq_sum: pl.Series, count: pl.Series
+        ):
+            n = count - ddof
+            sum_ = sum_.cast(pl.Float64)
+            sq_sum = sq_sum.cast(pl.Float64)
+            var = (sq_sum - sum_.pow(2) / count) / n
+            var[count <= 0] = None
+            return var
+
+        def _compute_variance_from_sums_pandas(
+            sum_: pd.Series, sq_sum: pd.Series, count: pd.Series
+        ):
+            n = count - ddof
+            if isinstance(sum_.dtype, pd.ArrowDtype):
+                sum_sq = sum_.astype("double[pyarrow]", copy=False) ** 2
+            else:
+                sum_sq = sum_.astype("float64", copy=False) ** 2
+            var = (sq_sum - sum_sq / count) / n
+            var = var.where(n > 0)
+            return var
+        if isinstance(sum_, pd.Series):
+            return _compute_variance_from_sums_pandas(sum_, sq_sum, count)
+        elif isinstance(sum_, pl.Series):
+            return _compute_variance_from_sums_polars(sum_, sq_sum, count)
+        elif isinstance(sum_, pd.DataFrame):
+            return pd.DataFrame(
+                {
+                    k: _compute_variance_from_sums_pandas(sum_[k], sq_sum[k], count[k])
+                    for k in sq_sum.columns
+                },
+                copy=False,
+            )
+        elif isinstance(sum_, pl.DataFrame):
+            return pl.DataFrame(
+                {
+                    k: _compute_variance_from_sums_polars(sum_[k], sq_sum[k], count[k])
+                    for k in sq_sum.columns
+                }
+            )
+
 
     @groupby_method(_GB_REDUCTION_DOCSTRING, full_name="standard deviation")
     def std(

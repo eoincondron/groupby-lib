@@ -1341,7 +1341,7 @@ def bools_to_categorical(
     return out
 
 
-def mean_from_sum_count(sum_: pd.Series, count: pd.Series):
+def mean_from_sum_count(sum_: np.ndarray, count: np.ndarray):
     """
     Compute mean from sum and count, handling datetime and timedelta types.
     Parameters
@@ -1357,10 +1357,15 @@ def mean_from_sum_count(sum_: pd.Series, count: pd.Series):
     Series containing the computed mean values.
 
     """
-    if sum_.dtype.kind in "mM":
-        return (sum_.astype("int64") // count).astype(sum_.dtype)
-    else:
-        return sum_ / count
+    with np.errstate(invalid="ignore", divide="ignore"):
+        if sum_.dtype.kind in "mM":
+            try:
+                ints = sum_.view("int64")
+            except:
+                ints = sum_.astype("int64")
+            return (ints // count).astype(sum_.dtype)
+        else:
+            return sum_ / count
 
 
 def argsort_index_numeric_only(index: pd.Index) -> np.ndarray | slice:
