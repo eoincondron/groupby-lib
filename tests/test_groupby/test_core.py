@@ -65,6 +65,52 @@ class TestGroupBy:
         assert_pd_equal(result, expected, check_dtype=False)
         assert result.dtype.kind == expected.dtype.kind
 
+    @pytest.mark.parametrize(
+        "method", ["sum", "mean", "min", "max", "var", "std", "first", "last"]
+    )
+    @pytest.mark.parametrize("key_type", [np.array, pd.Series])
+    @pytest.mark.parametrize(
+        "value_dtype", [int, float, "float32", bool, "double[pyarrow]"]
+    )
+    @pytest.mark.parametrize("value_type", [np.array, pd.Series])
+    @pytest.mark.parametrize("use_mask", [False, True])
+    def test_transform(self, method, key_type, value_dtype, value_type, use_mask):
+        if value_dtype is bool and method in ("var", "std"):
+            return
+
+        index = pd.RangeIndex(2, 11)
+        key = pd.Series(
+            [1, 1, 2, 1, 3, 3, 6, 1, 6],
+            index=index,
+        )
+        values = pd.Series([-1, 0.3, 4, 3.5, 8, 6, 3, 1, 12.6], index=index).astype(
+            value_dtype
+        )
+
+        if use_mask:
+            mask = key != 1
+            expected = (
+                values[mask]
+                .groupby(key[mask], observed=True)
+                .agg(method)
+                .reindex(key, fill_value=0 if method in ("sum", "count") else np.nan)
+            )
+            expected.index = values.index
+        else:
+            mask = None
+            expected = values.groupby(key, observed=True).transform(method)
+
+        key = key_type(key)
+        values = value_type(values)
+
+        if isinstance(key, np.ndarray) and isinstance(values, np.ndarray):
+            expected.index = pd.RangeIndex(len(expected))
+
+        result = getattr(GroupBy, method)(key, values, mask=mask, transform=True)
+
+        assert_pd_equal(result, expected, check_dtype=False)
+        assert result.dtype.kind == expected.dtype.kind
+
     def test_pyarrow_dictionary_key(self):
         key = pl.Series("bar", ["a", "b"] * 3, dtype=pl.Categorical)
         values = pl.Series(
