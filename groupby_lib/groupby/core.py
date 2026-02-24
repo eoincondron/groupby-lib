@@ -605,18 +605,37 @@ class GroupBy:
         Checks that all inputs have the same length and compatible indexes.
         Returns the names and list of value arrays along with a common index.
         """
-        value_list, value_names = convert_data_to_arr_list_and_keys(values)
         if isinstance(values, (pd.DataFrame, pl.DataFrame)):
-            value_list, value_names = map(
-                list,
-                zip(
-                    *[
-                        (val, name)
-                        for val, name in zip(value_list, value_names)
-                        if series_is_numeric(val)
-                    ]
-                ),
+            cols = [col for col in values.columns if series_is_numeric(values[col])]
+            values = values[cols]
+
+        value_list, value_names = convert_data_to_arr_list_and_keys(values)
+        value_index = _validate_input_lengths_and_indexes(value_list)
+        values_length = len(value_list[0])
+        if values_length != len(self):
+            raise ValueError(
+                f"Length of the input values ({values_length}) does not match length of group keys ({len(self)})"
             )
+
+        if self._key_index is not None:
+            if value_index is not None and not self._key_index.equals(value_index):
+                raise ValueError(
+                    "Pandas index of inputs does not match that of the group keys"
+                )
+            common_index = self._key_index
+        elif value_index is not None:
+            common_index = value_index
+        else:
+            common_index = None
+
+        if mask is not None and pd.api.types.is_bool_dtype(mask):
+            # check mask length and index are compatible with values and group keys
+            _validate_input_lengths_and_indexes([mask, *value_list])  
+
+        if common_index is None:
+            transform_index = pd.RangeIndex(len(self))
+        else:
+            transform_index = common_index
 
         type_list = [None] * len(value_list)
         for i, val in enumerate(value_list):
@@ -625,24 +644,7 @@ class GroupBy:
             else:
                 type_list[i] = val.dtype if hasattr(val, "dtype") else val.type
 
-        to_check = value_list
-        if mask is not None and pd.api.types.is_bool_dtype(mask):
-            to_check = [*to_check, mask]
-
-        common_index = _validate_input_lengths_and_indexes(to_check)
-        input_len = len(to_check[0])
-
-        if input_len != len(self):
-            raise ValueError(
-                f"Length of the input values ({input_len}) does not match length of group keys ({len(self)})"
-            )
-        if self._key_index is not None and common_index is not None:
-            if not self._key_index.equals(common_index):
-                raise ValueError(
-                    "Pandas index of inputs does not match that of the group keys"
-                )
-
-        return value_names, value_list, type_list, common_index
+        return value_names, value_list, type_list, transform_index
 
     def _convert_arr_to_pandas_series(
         self, arr: np.ndarray, orig_type, index: pd.Index
@@ -1249,6 +1251,7 @@ class GroupBy:
             var = (sq_sum - sum_sq / count) / n
             var = var.where(n > 0)
             return var
+
         if isinstance(sum_, pd.Series):
             return _compute_variance_from_sums_pandas(sum_, sq_sum, count)
         elif isinstance(sum_, pl.Series):
@@ -1268,7 +1271,6 @@ class GroupBy:
                     for k in sq_sum.columns
                 }
             )
-
 
     @groupby_method(_GB_REDUCTION_DOCSTRING, full_name="standard deviation")
     def std(
