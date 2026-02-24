@@ -739,8 +739,8 @@ class GroupBy:
         return result
 
     def _build_arg_dict_for_function(self, func, values, mask, **kwargs):
-        value_names, value_list, type_list, common_index = self._preprocess_arguments(
-            values, mask
+        value_names, value_list, type_list, transform_index = (
+            self._preprocess_arguments(values, mask)
         )
 
         sig = signature(func)
@@ -759,7 +759,7 @@ class GroupBy:
         keys = self._col_names_from_value_names(value_names)
         arg_dict = {key: args.args for key, args in zip(keys, bound_args)}
 
-        return arg_dict, type_list, common_index
+        return arg_dict, type_list, transform_index
 
     def _find_first_chunk_in_slice(self, mask: slice) -> int:
         """
@@ -958,8 +958,8 @@ class GroupBy:
         if func_is_mean:
             effective_func_name = "sum"  # mean is calculated as sum/count
 
-        value_names, value_list, type_list, common_index = self._preprocess_arguments(
-            values, mask
+        value_names, value_list, type_list, transform_index = (
+            self._preprocess_arguments(values, mask)
         )
 
         return_polars = self._values_is_polars(type_list) and transform
@@ -1446,8 +1446,8 @@ class GroupBy:
         if not isinstance(self, GroupBy):
             self = GroupBy(self)
 
-        value_names, value_list, type_list, common_index = self._preprocess_arguments(
-            values, mask=mask
+        value_names, value_list, type_list, transform_index = (
+            self._preprocess_arguments(values, mask=mask)
         )
         indexer = self._group_sort_indexer
         group_counts = self.ikey_count[self._labels_argsort]
@@ -1497,11 +1497,7 @@ class GroupBy:
             if transform:
                 self._unify_group_key_chunks(keep_chunked=False)
                 arrays = [arr[self.group_ikey] for arr in arrays]
-                index = (
-                    common_index
-                    if common_index is not None
-                    else pd.RangeIndex(len(self))
-                )
+                index = transform_index
             else:
                 index = group_index
             could_be_non_reduce = False
@@ -1542,7 +1538,7 @@ class GroupBy:
                     group_index, pd.RangeIndex(n_per_group)
                 )
             else:
-                index = self._build_group_sorted_index(common_index)
+                index = self._build_group_sorted_index(transform_index)
                 if mask is not None:
                     index = index[mask[indexer]]
 
@@ -1716,20 +1712,20 @@ class GroupBy:
         """
         from ..emas import ema_grouped
 
-        value_names, value_list, type_list, common_index = self._preprocess_arguments(
-            values, mask
+        value_names, value_list, type_list, transform_index = (
+            self._preprocess_arguments(values, mask)
         )
 
         return_polars = self._values_is_polars(type_list)
 
         if index_by_groups:
             indexer = self._group_sort_indexer
-            result_index = self._build_group_sorted_index(common_index)
+            result_index = self._build_group_sorted_index(transform_index)
             group_counts = self.ikey_count[self._labels_argsort]
             group_key = np.repeat(np.arange(self.ngroups), group_counts)
         else:
             indexer = slice(None)
-            result_index = common_index
+            result_index = transform_index
             group_key = self.group_ikey
 
         arg_list = [
@@ -2101,7 +2097,7 @@ class GroupBy:
             print("Unifying chunked group-key before cumulative group-by")
             self._unify_group_key_chunks()
 
-        arg_dict, type_list, common_index = self._build_arg_dict_for_function(
+        arg_dict, type_list, transform_index = self._build_arg_dict_for_function(
             func,
             values=values,
             mask=mask,
@@ -2119,7 +2115,7 @@ class GroupBy:
         else:
             for key, result, dtype in zip(arg_dict, results, type_list):
                 result_dict[key] = self._convert_arr_to_pandas_series(
-                    result, dtype, common_index
+                    result, dtype, transform_index
                 )
             result = pd.DataFrame(result_dict)
 
