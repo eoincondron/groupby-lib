@@ -1040,7 +1040,7 @@ def _val_to_numpy(
         is_chunked = False
 
     if is_chunked:
-        val_list = [chunk.to_numpy() for chunk in arrow.chunks]
+        val_list = [chunk.to_numpy(zero_copy_only=False) for chunk in arrow.chunks]
     elif hasattr(val, "to_numpy"):
         val_list = [val.to_numpy()]  # type: ignore
     else:
