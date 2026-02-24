@@ -924,7 +924,7 @@ class GroupBy:
         transform: bool = False,
         margins: bool = False,
         observed_only: bool = True,
-    ) -> Union[pd.Series, pd.DataFrame]:
+    ) -> Union[pd.Series, pd.DataFrame, pl.Series, pl.DataFrame]:
         """
         Apply a group-by reduction to values.
         If values is a collection or DataFrame/2-D array, applies the function to each element in parallel.
@@ -971,56 +971,48 @@ class GroupBy:
         )
 
         result_columns, counts = map(list, zip(*results))
-        result_len = len(self.result_index)
-
-        if transform:
-            self._unify_group_key_chunks()
-            result_columns = [result[self.group_ikey] for result in result_columns]
-            if common_index is not None:
-                result_index = common_index
-            else:
-                result_index = pd.RangeIndex(len(self))
-        else:
-            result_index = self.result_index
+        if func_name in ("size", "count"):
+            result_columns = counts
 
         result_col_names = self._col_names_from_value_names(value_names)
+        result_col_dict = dict(zip(result_col_names, result_columns))
 
-        if return_polars:
-            result_columns = [
-                self._convert_arr_to_polars_series(arr=result, orig_type=orig_type)
-                for result, orig_type in zip(result_columns, type_list)
-            ]
-            result_df = pl.DataFrame(
-                dict(zip(result_col_names, result_columns)),
+        if transform:
+            if func_name not in ("sum", "size", "sum_squares", "count"):
+                observed_group_mask = self.count_ikey(mask=mask) > 0
+            else:
+                observed_group_mask = None
+            result_df = self._transform_result_from_columns(
+                result_col_dict=result_col_dict,
+                counts=counts,
+                func_is_mean=func_is_mean,
+                type_list=type_list,
+                transform_index=transform_index,
+                observed_group_mask=observed_group_mask,
+                return_polars=return_polars,
             )
-        else:
-            result_columns = [
-                self._convert_arr_to_pandas_series(
-                    arr=result[: len(result_index)],
+            return self._maybe_squeeze_to_1d(result_df, values, len(value_list))
+
+        assert not return_polars
+
+        result_index = self.result_index
+        result_len = len(result_index)  # filter out null group if present
+
+        result_df = pd.DataFrame(
+            {
+                key: self._convert_arr_to_pandas_series(
+                    arr=result_col_dict[key][:result_len],
                     orig_type=orig_type,
                     index=result_index,
                 )
-                for result, orig_type in zip(result_columns, type_list)
-            ]
-            result_df = pd.DataFrame(
-                dict(zip(result_col_names, result_columns)),
-                copy=False,
-            )
-
-        result = self._maybe_squeeze_to_1d(result_df, values, len(value_list))
-
-        if transform:
-            return result
-
+                for key, orig_type in zip(result_col_names, type_list)
+            }
+        )
         count_df = pd.DataFrame(
             {key: count[:result_len] for key, count in zip(result_col_names, counts)},
-            index=result_index,
             copy=False,
+            index=result_index,
         )
-
-        if func_name in ("size", "count"):
-            result_df = count_df
-
         sortkey = self._labels_argsort
 
         if observed_only:
@@ -1054,17 +1046,65 @@ class GroupBy:
                 count_df = self._add_margins(count_df, margins=margins, func_name="sum")
 
         if func_is_mean:
-            with np.errstate(invalid="ignore", divide="ignore"):
-                result_df = pd.DataFrame(
-                    {
-                        k: mean_from_sum_count(
-                            result_df[k], count_df[k].reindex(result_df.index)
-                        )
-                        for k in result_df
-                    }
-                )
+            result_df = pd.DataFrame(
+                {k: mean_from_sum_count(result_df[k], count_df[k]) for k in result_df},
+                copy=False,
+            )
 
         return self._maybe_squeeze_to_1d(result_df, values, len(value_list))
+
+    def _transform_result_from_columns(
+        self,
+        result_col_dict: dict[str, np.ndarray],
+        counts: List[np.ndarray],
+        type_list: List,
+        func_is_mean: bool,
+        transform_index: pd.Index,
+        observed_group_mask: Optional[ArrayType1D] = None,
+        return_polars: bool = False,
+    ) -> pd.DataFrame | pl.DataFrame:
+        if func_is_mean:
+            result_col_dict = {
+                k: mean_from_sum_count(
+                    result_col_dict[k][: self.ngroups], count[: self.ngroups]
+                )
+                for k, count in zip(result_col_dict, counts)
+            }
+
+        self._unify_group_key_chunks()
+        result_col_dict = {
+            k: result_col_dict[k][self.group_ikey] for k in result_col_dict
+        }
+
+        if return_polars:
+            result_df = pl.DataFrame(
+                {
+                    key: self._convert_arr_to_polars_series(
+                        arr=result_col_dict[key], orig_type=orig_type
+                    )
+                    for key, orig_type in zip(result_col_dict, type_list)
+                }
+            )
+        else:
+            result_series_dict = {
+                key: self._convert_arr_to_pandas_series(
+                    arr=result_col_dict[key],
+                    orig_type=orig_type,
+                    index=transform_index,
+                )
+                for key, orig_type in zip(result_col_dict, type_list)
+            }
+
+            if observed_group_mask is not None and not observed_group_mask.all():
+                observed_group_mask = observed_group_mask[self.group_ikey]
+                for key, series in result_series_dict.items():
+                    if type_list[0].kind in "biu" or True:
+                        series = series.where(observed_group_mask)
+                        result_series_dict[key] = series
+
+            result_df = pd.DataFrame(result_series_dict, copy=False)
+
+        return result_df
 
     _GB_REDUCTION_DOCSTRING = """
         Calculate the {method} of the given values over the groups defined by `key`
