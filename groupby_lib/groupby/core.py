@@ -656,8 +656,13 @@ class GroupBy:
             else:
                 arr = arr.view(int)
                 dtype = orig_type
+        elif isinstance(orig_type, pd.ArrowDtype):
+            result = to_arrow(arr).to_pandas(types_mapper=pd.ArrowDtype)
+            result.index = index
+            return result
         else:
-            dtype = None
+            dtype = arr.dtype
+
         return pd.Series(
             arr,
             index,
