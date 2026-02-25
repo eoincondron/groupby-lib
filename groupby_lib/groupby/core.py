@@ -630,7 +630,7 @@ class GroupBy:
 
         if mask is not None and pd.api.types.is_bool_dtype(mask):
             # check mask length and index are compatible with values and group keys
-            _validate_input_lengths_and_indexes([mask, *value_list])  
+            _validate_input_lengths_and_indexes([mask, *value_list])
 
         if common_index is None:
             transform_index = pd.RangeIndex(len(self))

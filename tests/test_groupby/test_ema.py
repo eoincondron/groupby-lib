@@ -205,14 +205,16 @@ class TestGroupByEma:
 
         # Create irregular time intervals
         base_time = pd.Timestamp("2024-01-01", tz="UTC")
-        times = pd.Series([
-            base_time,
-            base_time + pd.Timedelta(minutes=15),
-            base_time + pd.Timedelta(hours=2),
-            base_time + pd.Timedelta(minutes=5),
-            base_time + pd.Timedelta(hours=1),
-            base_time + pd.Timedelta(hours=3),
-        ])
+        times = pd.Series(
+            [
+                base_time,
+                base_time + pd.Timedelta(minutes=15),
+                base_time + pd.Timedelta(hours=2),
+                base_time + pd.Timedelta(minutes=5),
+                base_time + pd.Timedelta(hours=1),
+                base_time + pd.Timedelta(hours=3),
+            ]
+        )
         gb = GroupBy(key)
 
         result = gb.ema(values, halflife="1h", times=times)
@@ -343,7 +345,7 @@ class TestGroupByEma:
         short_times = pd.date_range("2024-01-01", periods=3, freq="1h")
         with pytest.raises(
             ValueError,
-            match="group_key, values, times must have equal length. " \
+            match="group_key, values, times must have equal length. "
             "Got lengths: {'group_key': 4, 'values': 4, 'times': 3",
         ):
             gb.ema(values, halflife="1h", times=short_times)

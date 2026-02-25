@@ -114,9 +114,7 @@ class TestBuildGroupIndexers:
         groups = gb.groups
         expected = key1.groupby([key1, key2]).groups
         assert len(groups) == 4
-        assert all(
-            np.array_equal(groups[k], expected[k]) for k in expected.keys()
-        )
+        assert all(np.array_equal(groups[k], expected[k]) for k in expected.keys())
 
 
 class TestExpandIndexToNewLevel:
@@ -141,8 +139,7 @@ class TestExpandIndexToNewLevel:
     def test_expand_multiindex(self):
         """Test expanding an existing MultiIndex."""
         index = pd.MultiIndex.from_arrays(
-            [[1, 2], [10, 20]],
-            names=["level_0", "level_1"]
+            [[1, 2], [10, 20]], names=["level_0", "level_1"]
         )
         new_level = pd.Index(["x", "y", "z"], name="level_2")
 
@@ -152,8 +149,12 @@ class TestExpandIndexToNewLevel:
         # Combined with [x, y, z] tiled
         expected = pd.MultiIndex.from_tuples(
             [
-                (1, 10, "x"), (1, 10, "y"), (1, 10, "z"),
-                (2, 20, "x"), (2, 20, "y"), (2, 20, "z"),
+                (1, 10, "x"),
+                (1, 10, "y"),
+                (1, 10, "z"),
+                (2, 20, "x"),
+                (2, 20, "y"),
+                (2, 20, "z"),
             ],
             names=["level_0", "level_1", "level_2"],
         )
@@ -219,8 +220,7 @@ class TestExpandIndexToNewLevel:
     def test_expand_preserves_level_names(self):
         """Test that level names are preserved correctly."""
         index = pd.MultiIndex.from_arrays(
-            [[1, 2], ["a", "b"]],
-            names=["numbers", "letters"]
+            [[1, 2], ["a", "b"]], names=["numbers", "letters"]
         )
         new_level = pd.Index([10, 20, 30], name="tens")
 
@@ -237,8 +237,12 @@ class TestExpandIndexToNewLevel:
 
         expected = pd.MultiIndex.from_tuples(
             [
-                ("cat", "small"), ("cat", "medium"), ("cat", "large"),
-                ("dog", "small"), ("dog", "medium"), ("dog", "large"),
+                ("cat", "small"),
+                ("cat", "medium"),
+                ("cat", "large"),
+                ("dog", "small"),
+                ("dog", "medium"),
+                ("dog", "large"),
             ],
             names=["animals", "size"],
         )
@@ -500,8 +504,7 @@ class TestBuildGroupSortedIndex:
         """Test _build_group_sorted_index with a MultiIndex as inner_index."""
         key = pd.Series(["a", "b", "a", "b"])
         inner_index = pd.MultiIndex.from_arrays(
-            [[1, 2, 3, 4], ["p", "q", "r", "s"]],
-            names=["num", "letter"]
+            [[1, 2, 3, 4], ["p", "q", "r", "s"]], names=["num", "letter"]
         )
 
         gb = GroupBy(key)
@@ -550,8 +553,7 @@ class TestBuildGroupSortedIndex:
         key1 = pd.Series([1, 1, 2, 2])
         key2 = pd.Series(["a", "b", "a", "b"])
         inner_index = pd.MultiIndex.from_arrays(
-            [[10, 20, 30, 40], ["p", "q", "r", "s"]],
-            names=["val", "char"]
+            [[10, 20, 30, 40], ["p", "q", "r", "s"]], names=["val", "char"]
         )
 
         gb = GroupBy([key1, key2])

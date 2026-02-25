@@ -270,14 +270,14 @@ class TestSeriesGroupBy:
     def test_constructor_validation(self):
         """Test constructor parameter validation."""
         # Should raise error if no by or level provided
-        with pytest.raises(
-            ValueError, match="Must provide either 'by' or 'level'"
-        ):
+        with pytest.raises(ValueError, match="Must provide either 'by' or 'level'"):
             SeriesGroupBy._from_by_keys(self.data)
 
         # Should raise error if obj is not Series
         with pytest.raises(TypeError, match="obj must be a pandas Series"):
-            SeriesGroupBy._from_by_keys(pd.DataFrame({"A": [1, 2, 3]}), by=self.groups[:3])
+            SeriesGroupBy._from_by_keys(
+                pd.DataFrame({"A": [1, 2, 3]}), by=self.groups[:3]
+            )
 
     def test_repr(self):
         """Test string representation."""
@@ -403,9 +403,7 @@ class TestDataFrameGroupBy:
     def test_dataframe_constructor_validation(self):
         """Test DataFrame constructor validation."""
         # Should raise error if no by or level provided
-        with pytest.raises(
-            ValueError, match="Must provide either 'by' or 'level'"
-        ):
+        with pytest.raises(ValueError, match="Must provide either 'by' or 'level'"):
             DataFrameGroupBy._from_by_keys(self.df)
 
         # Should raise error if obj is not DataFrame

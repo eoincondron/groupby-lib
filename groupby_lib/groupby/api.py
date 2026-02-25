@@ -851,7 +851,7 @@ class DataFrameGroupBy(BaseGroupBy):
         """
         if not isinstance(obj, (pd.DataFrame, pl.DataFrame)):
             raise TypeError("obj must be a pandas DataFrame")
-        
+
         if by is None and level is None:
             raise ValueError("Must provide either 'by' or 'level' for grouping")
 

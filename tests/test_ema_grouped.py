@@ -201,7 +201,7 @@ class TestEmaGrouped:
 
         with pytest.raises(
             ValueError,
-            match="group_key, values, times must have equal length. " \
+            match="group_key, values, times must have equal length. "
             "Got lengths: {'group_key': 4, 'values': 4, 'times': 3}",
         ):
             ema_grouped(groups, 2, values, halflife="1h", times=times)
