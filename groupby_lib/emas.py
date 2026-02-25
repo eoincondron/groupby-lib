@@ -92,18 +92,18 @@ def _ema_adjusted(arr: np.ndarray, alpha: float) -> np.ndarray:
     """
     out = np.zeros_like(arr, dtype="float64")
     beta = 1 - alpha
-    residual = 0
-    residual_weights = 0
+    weighted_sum = 0
+    sum_of_weights = 0
     for i, x in enumerate(arr):
         if np.isnan(x):
             out[i] = out[i - 1]
         else:
-            out[i] = (x + residual) / (1 + residual_weights)
-            residual_weights += 1
-            residual += x
+            sum_of_weights += 1
+            weighted_sum += x
+            out[i] = weighted_sum / sum_of_weights
 
-        residual *= beta
-        residual_weights *= beta
+        weighted_sum *= beta
+        sum_of_weights *= beta
 
     return out
 
@@ -184,20 +184,22 @@ def _ema_time_weighted(arr: np.ndarray, times: np.ndarray, halflife: int) -> np.
     NaN values propagate the last valid EMA value forward.
     """
     out = np.zeros_like(arr, dtype="float64")
-    residual = out[0] = arr[0]
-    residual_weights = 1
+    weighted_sum = out[0] = arr[0]
+    sum_of_weights = 1
+    decay_factor = np.exp2(-1 / halflife)  # Precompute for efficiency
+
     for i, x in enumerate(arr[1:], 1):
-        hl = (times[i] - times[i - 1]) / halflife
-        beta = np.exp(-np.log(2) * hl)
-        residual *= beta
-        residual_weights *= beta
+        time_delta = times[i] - times[i - 1]
+        beta = decay_factor**time_delta
+        weighted_sum *= beta
+        sum_of_weights *= beta
 
         if np.isnan(x):
             out[i] = out[i - 1]
         else:
-            out[i] = (x + residual) / (1 + residual_weights)
-            residual_weights += 1
-            residual += x
+            sum_of_weights += 1
+            weighted_sum += x
+            out[i] = weighted_sum / sum_of_weights
 
     return out
 
@@ -342,8 +344,8 @@ def _ema_grouped(
     """
     out = np.zeros_like(values, dtype="float64")
     beta = 1 - alpha
-    residuals = np.zeros(ngroups, dtype="float64")
-    residual_weights = np.zeros(ngroups, dtype="float64")
+    weighted_sums = np.zeros(ngroups, dtype="float64")
+    sums_of_weights = np.zeros(ngroups, dtype="float64")
     last_seen = np.full(ngroups, np.nan, dtype="float64")
 
     masked = mask is not None
@@ -352,19 +354,19 @@ def _ema_grouped(
         if np.isnan(x) or (masked and not mask[i]):
             out[i] = last_seen[k]
         else:
-            out[i] = (x + residuals[k]) / (1 + residual_weights[k])
-            residual_weights[k] += 1
-            residuals[k] += x
+            sums_of_weights[k] += 1
+            weighted_sums[k] += x
+            out[i] = weighted_sums[k] / sums_of_weights[k]
 
-        residuals[k] *= beta
-        residual_weights[k] *= beta
+        weighted_sums[k] *= beta
+        sums_of_weights[k] *= beta
 
         last_seen[k] = out[i]
 
     return out
 
 
-_EMA_SIGNATURES_GROUPED_TIMED = [
+_EMA_SIGNATURES_GROUPED_TIME_WEIGHTED = [
     nb.types.float64[:](
         key_type,
         arr_type,
@@ -379,7 +381,7 @@ _EMA_SIGNATURES_GROUPED_TIMED = [
 
 
 @nb.njit(nogil=True, cache=True)
-def _ema_grouped_timed(
+def _ema_grouped_time_weighted(
     group_key: np.ndarray,
     values: np.ndarray,
     times: np.ndarray,
@@ -435,26 +437,29 @@ def _ema_grouped_timed(
     NaN values propagate the last valid EMA value for that group.
     """
     out = np.zeros_like(values, dtype="float64")
-    residuals = np.zeros(ngroups, dtype="float64")
-    residual_weights = np.zeros(ngroups, dtype="float64")
+    weighted_sums = np.zeros(ngroups, dtype="float64")
+    sums_of_weights = np.zeros(ngroups, dtype="float64")
     last_seen_times = np.zeros(ngroups, dtype="int64")
     last_seen = np.full(ngroups, np.nan, dtype="float64")
 
     masked = mask is not None
+    decay_factor = np.exp2(
+        -1 / halflife
+    )  # Precompute constant for halflife to avoid repeated log(2) calculation
 
     for i, (k, x) in enumerate(zip(group_key, values)):
         if last_seen_times[k] > 0:
-            hl = (times[i] - last_seen_times[k]) / halflife
-            beta = np.exp(-np.log(2) * hl)
-            residuals[k] *= beta
-            residual_weights[k] *= beta
+            time_delta = times[i] - last_seen_times[k]
+            beta = decay_factor**time_delta
+            weighted_sums[k] *= beta
+            sums_of_weights[k] *= beta
 
         if np.isnan(x) or (masked and not mask[i]):
             out[i] = last_seen[k]
         else:
-            out[i] = (x + residuals[k]) / (1 + residual_weights[k])
-            residual_weights[k] += 1
-            residuals[k] += x
+            sums_of_weights[k] += 1
+            weighted_sums[k] += x
+            out[i] = weighted_sums[k] / sums_of_weights[k]
 
         last_seen_times[k] = times[i]
         last_seen[k] = out[i]
@@ -536,7 +541,7 @@ def ema_grouped(
     group_key_arr = np.asarray(group_key)
     values_arr = np.asarray(values)
 
-    if values_arr.dtype.kind not in ("f", "i"):
+    if values_arr.dtype.kind not in "fiu":
         raise TypeError("values must be numeric")
 
     # Validate dimensions first
