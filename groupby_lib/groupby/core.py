@@ -1,6 +1,6 @@
 import multiprocessing
 from collections.abc import Mapping, Sequence
-from functools import cached_property, wraps
+from functools import cached_property, reduce, wraps
 from inspect import signature
 from typing import Callable, List, Literal, Optional, Tuple, Union
 
@@ -2482,6 +2482,17 @@ def crosstab(
     return table
 
 
+def cartesian_product(*arrays):
+
+    def add_level(levels, new_level):
+        return [
+            *(np.repeat(a, len(new_level)) for a in levels),
+            np.tile(new_level, len(levels[0])),
+        ]
+
+    return reduce(add_level, arrays[1:], [arrays[0]])
+
+
 def add_row_margin(
     data: pd.Series | pd.DataFrame, agg_func="sum", levels: Optional[List[int]] = None
 ):
@@ -2500,7 +2511,6 @@ def add_row_margin(
     pd.DataFrame
         DataFrame with an additional 'All' row containing the aggregated values.
     """
-    from pandas.core.reshape.util import cartesian_product
 
     data = data.sort_index()
     index = data.index
@@ -2513,7 +2523,8 @@ def add_row_margin(
         levels = all_levels
 
     new_levels = [index.levels[lvl].tolist() + ["All"] for lvl in all_levels]
-    new_codes = cartesian_product([np.arange(len(lvl)) for lvl in new_levels])
+    new_codes = cartesian_product(*[np.arange(len(lvl)) for lvl in new_levels])
+
     new_index = pd.MultiIndex(codes=new_codes, levels=new_levels, names=index.names)
     out = data.reindex(new_index, fill_value=0)
     keep = pd.Series(False, index=out.index)
