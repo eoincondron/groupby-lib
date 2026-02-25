@@ -1357,9 +1357,9 @@ class TestCombineChunkResultsForUnfactorizedKey:
         )
 
         # Should handle empty chunks gracefully
-        expected_labels = pd.Index(["A", "B"])
+        expected_labels = pd.Index(["A", "B"], dtype=object)
         pd.testing.assert_index_equal(
-            all_labels.sort_values(), expected_labels.sort_values()
+            all_labels.sort_values(), expected_labels.sort_values(), 
         )
         assert combined.loc["A"] == 10.0
         assert combined.loc["B"] == 20.0
