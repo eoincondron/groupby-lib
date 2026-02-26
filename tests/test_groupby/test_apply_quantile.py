@@ -216,7 +216,6 @@ class TestApply:
         mask = None if mask else group_key > 3
         result = gb.apply(value, np.cumsum, mask=mask)
 
-
         if mask is None:
             mask = slice(None)
         expected = (

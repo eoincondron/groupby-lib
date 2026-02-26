@@ -659,7 +659,7 @@ class TestFactorize1DComprehensive:
             assert (expanded.get_level_values(i) == key).all()
 
         t0 = time.perf_counter()
-        pd.Series(keys[0]).groupby(keys).grouper._get_compressed_codes()
+        pd.Series(keys[0]).groupby(keys).groups
         pandas_duration = time.perf_counter() - t0
 
         assert pandas_duration > duration

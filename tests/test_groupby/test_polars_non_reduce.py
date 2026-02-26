@@ -72,16 +72,18 @@ class TestPolarsCumulativeMethods:
         groups = pl.Series("group", ["A", "A", "B", "B", "A", "A", "B", "B"])
 
         # Use pandas to create datetime values, then convert to Polars
-        dates_pd = pd.to_datetime([
-            "2024-01-01 00:00:00",
-            "2024-01-02 12:00:00",
-            "2024-01-03 00:00:00",
-            "2024-01-04 12:00:00",
-            "2024-01-05 00:00:00",
-            "2024-01-06 12:00:00",
-            "2024-01-07 00:00:00",
-            "2024-01-08 12:00:00",
-        ])
+        dates_pd = pd.to_datetime(
+            [
+                "2024-01-01 00:00:00",
+                "2024-01-02 12:00:00",
+                "2024-01-03 00:00:00",
+                "2024-01-04 12:00:00",
+                "2024-01-05 00:00:00",
+                "2024-01-06 12:00:00",
+                "2024-01-07 00:00:00",
+                "2024-01-08 12:00:00",
+            ]
+        )
         values_series = pl.from_pandas(pd.Series(dates_pd, name="values"))
 
         gb = GroupBy(groups)
@@ -104,16 +106,18 @@ class TestPolarsCumulativeMethods:
         groups = pl.Series("group", ["A", "A", "B", "B", "A", "A", "B", "B"])
 
         # Create timezone-aware datetime values
-        dates_pd = pd.to_datetime([
-            "2024-01-01 00:00:00",
-            "2024-01-02 12:00:00",
-            "2024-01-03 00:00:00",
-            "2024-01-04 12:00:00",
-            "2024-01-05 00:00:00",
-            "2024-01-06 12:00:00",
-            "2024-01-07 00:00:00",
-            "2024-01-08 12:00:00",
-        ]).tz_localize("UTC")
+        dates_pd = pd.to_datetime(
+            [
+                "2024-01-01 00:00:00",
+                "2024-01-02 12:00:00",
+                "2024-01-03 00:00:00",
+                "2024-01-04 12:00:00",
+                "2024-01-05 00:00:00",
+                "2024-01-06 12:00:00",
+                "2024-01-07 00:00:00",
+                "2024-01-08 12:00:00",
+            ]
+        ).tz_localize("UTC")
         values_series = pl.from_pandas(pd.Series(dates_pd, name="values"))
 
         gb = GroupBy(groups)
@@ -136,9 +140,9 @@ class TestPolarsCumulativeMethods:
         groups = pl.Series("group", ["A", "A", "B", "B", "A", "A", "B", "B"])
 
         # Create timedelta values using pandas, then convert to Polars
-        durations_pd = pd.to_timedelta([
-            "1h", "2h", "30m", "1h30m", "45m", "2h15m", "1h", "3h"
-        ])
+        durations_pd = pd.to_timedelta(
+            ["1h", "2h", "30m", "1h30m", "45m", "2h15m", "1h", "3h"]
+        )
         values_series = pl.from_pandas(pd.Series(durations_pd, name="values"))
 
         gb = GroupBy(groups)
@@ -193,7 +197,9 @@ class TestPolarsCumulativeMethods:
             assert len(result) == len(df)
 
             # Compare with pandas equivalent
-            pd.testing.assert_frame_equal(result_pd, result.to_pandas(), check_dtype=False)
+            pd.testing.assert_frame_equal(
+                result_pd, result.to_pandas(), check_dtype=False
+            )
 
 
 class TestPolarsRollingMethods:
@@ -281,7 +287,9 @@ class TestPolarsRollingMethods:
 
         for method in ["rolling_sum", "rolling_mean"]:
             result = getattr(gb, method)(df.select(["val1", "val2"]), window=2)
-            result_pd = getattr(gb, method)(df.select(["val1", "val2"]).to_pandas(), window=2)
+            result_pd = getattr(gb, method)(
+                df.select(["val1", "val2"]).to_pandas(), window=2
+            )
 
             # Verify result is a Polars DataFrame
             assert isinstance(result, pl.DataFrame)
@@ -289,24 +297,26 @@ class TestPolarsRollingMethods:
             assert len(result) == len(df)
 
             # Compare with pandas equivalent
-            pd.testing.assert_frame_equal(result_pd, result.to_pandas(), check_dtype=False)
+            pd.testing.assert_frame_equal(
+                result_pd, result.to_pandas(), check_dtype=False
+            )
 
-    @pytest.mark.parametrize(
-        "method", ["rolling_min", "rolling_max"]
-    )
+    @pytest.mark.parametrize("method", ["rolling_min", "rolling_max"])
     def test_rolling_datetime(self, method):
         """Test rolling min/max with datetime types."""
         groups = pl.Series("group", ["A", "A", "B", "B", "A", "A"])
 
         # Use pandas to create datetime values, then convert to Polars
-        dates_pd = pd.to_datetime([
-            "2024-01-01",
-            "2024-01-02",
-            "2024-01-03",
-            "2024-01-04",
-            "2024-01-05",
-            "2024-01-06",
-        ])
+        dates_pd = pd.to_datetime(
+            [
+                "2024-01-01",
+                "2024-01-02",
+                "2024-01-03",
+                "2024-01-04",
+                "2024-01-05",
+                "2024-01-06",
+            ]
+        )
         values = pl.from_pandas(pd.Series(dates_pd, name="values"))
 
         gb = GroupBy(groups)
@@ -328,7 +338,9 @@ class TestPolarsEMA:
     def test_ema_basic_polars_series(self):
         """Test EMA with Polars Series."""
         groups = pl.Series("group", ["A", "A", "A", "B", "B", "B"])
-        values = pl.Series("values", [1.0, 2.0, 3.0, 10.0, 20.0, 30.0], dtype=pl.Float64)
+        values = pl.Series(
+            "values", [1.0, 2.0, 3.0, 10.0, 20.0, 30.0], dtype=pl.Float64
+        )
 
         gb = GroupBy(groups)
         result = gb.ema(values, alpha=0.5)
@@ -409,7 +421,9 @@ class TestPolarsEMA:
     def test_ema_time_weighted_tz_aware(self):
         """Test EMA with timezone-aware timestamps."""
         groups = pl.Series("group", ["A", "A", "A", "B", "B", "B"])
-        values = pl.Series("values", [1.0, 2.0, 3.0, 10.0, 20.0, 30.0], dtype=pl.Float64)
+        values = pl.Series(
+            "values", [1.0, 2.0, 3.0, 10.0, 20.0, 30.0], dtype=pl.Float64
+        )
 
         # Create timezone-aware timestamps using pandas, then convert to Polars
         times_pd = pd.date_range("2024-01-01", periods=6, freq="1h", tz="UTC")
@@ -426,7 +440,9 @@ class TestPolarsEMA:
     def test_ema_time_weighted_tz_aware_different_timezones(self):
         """Test EMA with different timezone-aware timestamps."""
         groups = pl.Series("group", ["A", "A", "A", "B", "B", "B"])
-        values = pl.Series("values", [1.0, 2.0, 3.0, 10.0, 20.0, 30.0], dtype=pl.Float64)
+        values = pl.Series(
+            "values", [1.0, 2.0, 3.0, 10.0, 20.0, 30.0], dtype=pl.Float64
+        )
 
         gb = GroupBy(groups)
 
@@ -446,9 +462,7 @@ class TestPolarsEMA:
 class TestPolarsTransformReductions:
     """Test reduction methods with transform=True and Polars."""
 
-    @pytest.mark.parametrize(
-        "method", ["sum", "mean", "min", "max", "first", "last"]
-    )
+    @pytest.mark.parametrize("method", ["sum", "mean", "min", "max", "first", "last"])
     @pytest.mark.parametrize(
         "dtype,values",
         [
@@ -474,13 +488,13 @@ class TestPolarsTransformReductions:
         # Compare with pandas equivalent
         assert result_pd.equals(result.to_pandas())
 
-    @pytest.mark.parametrize(
-        "method", ["var", "std"]
-    )
+    @pytest.mark.parametrize("method", ["var", "std"])
     def test_transform_variance_std(self, method):
         """Test transform for variance and std with Polars."""
         groups = pl.Series("group", ["A", "A", "A", "B", "B", "B"])
-        values = pl.Series("values", [1.0, 2.0, 3.0, 10.0, 20.0, 30.0], dtype=pl.Float64)
+        values = pl.Series(
+            "values", [1.0, 2.0, 3.0, 10.0, 20.0, 30.0], dtype=pl.Float64
+        )
 
         gb = GroupBy(groups)
         result = getattr(gb, method)(values, transform=True)
@@ -494,13 +508,13 @@ class TestPolarsTransformReductions:
         # Compare with pandas equivalent
         assert result_pd.equals(result.to_pandas())
 
-    @pytest.mark.parametrize(
-        "method", ["sum", "mean", "min", "max"]
-    )
+    @pytest.mark.parametrize("method", ["sum", "mean", "min", "max"])
     def test_transform_with_nulls(self, method):
         """Test transform reductions with null values."""
         groups = pl.Series("group", ["A", "A", "A", "B", "B", "B"])
-        values = pl.Series("values", [1.0, None, 3.0, 10.0, None, 30.0], dtype=pl.Float64)
+        values = pl.Series(
+            "values", [1.0, None, 3.0, 10.0, None, 30.0], dtype=pl.Float64
+        )
 
         gb = GroupBy(groups)
         result = getattr(gb, method)(values, transform=True)
@@ -514,9 +528,7 @@ class TestPolarsTransformReductions:
         # Compare with pandas equivalent
         assert result_pd.equals(result.to_pandas())
 
-    @pytest.mark.parametrize(
-        "method", ["sum", "mean", "min", "max"]
-    )
+    @pytest.mark.parametrize("method", ["sum", "mean", "min", "max"])
     def test_transform_dataframe(self, method):
         """Test transform reductions with Polars DataFrame."""
         df = pl.DataFrame(
@@ -529,7 +541,9 @@ class TestPolarsTransformReductions:
 
         gb = GroupBy(df["group"])
         result = getattr(gb, method)(df.select(["val1", "val2"]), transform=True)
-        result_pd = getattr(gb, method)(df.select(["val1", "val2"]).to_pandas(), transform=True)
+        result_pd = getattr(gb, method)(
+            df.select(["val1", "val2"]).to_pandas(), transform=True
+        )
 
         # Verify result is a Polars DataFrame
         assert isinstance(result, pl.DataFrame)
@@ -569,22 +583,22 @@ class TestPolarsTransformReductions:
         assert result_list[4] == 11
         assert result_list[5] == 11
 
-    @pytest.mark.parametrize(
-        "method", ["min", "max"]
-    )
+    @pytest.mark.parametrize("method", ["min", "max"])
     def test_transform_datetime(self, method):
         """Test transform min/max with datetime types."""
         groups = pl.Series("group", ["A", "A", "B", "B", "A", "A"])
 
         # Use pandas to create datetime values, then convert to Polars
-        dates_pd = pd.to_datetime([
-            "2024-01-01",
-            "2024-01-02",
-            "2024-01-03",
-            "2024-01-04",
-            "2024-01-05",
-            "2024-01-06",
-        ])
+        dates_pd = pd.to_datetime(
+            [
+                "2024-01-01",
+                "2024-01-02",
+                "2024-01-03",
+                "2024-01-04",
+                "2024-01-05",
+                "2024-01-06",
+            ]
+        )
         values = pl.from_pandas(pd.Series(dates_pd, name="values"))
 
         gb = GroupBy(groups)
@@ -649,7 +663,9 @@ class TestPolarsShiftDiff:
     def test_shift_diff_with_nulls(self, method):
         """Test shift and diff with null values."""
         groups = pl.Series("group", ["A", "A", "A", "B", "B", "B"])
-        values = pl.Series("values", [1.0, None, 3.0, 10.0, None, 30.0], dtype=pl.Float64)
+        values = pl.Series(
+            "values", [1.0, None, 3.0, 10.0, None, 30.0], dtype=pl.Float64
+        )
 
         gb = GroupBy(groups)
         result = getattr(gb, method)(values)
@@ -690,14 +706,16 @@ class TestPolarsShiftDiff:
         groups = pl.Series("group", ["A", "A", "A", "B", "B", "B"])
 
         # Use pandas to create datetime values, then convert to Polars
-        dates_pd = pd.to_datetime([
-            "2024-01-01",
-            "2024-01-02",
-            "2024-01-03",
-            "2024-01-04",
-            "2024-01-05",
-            "2024-01-06",
-        ])
+        dates_pd = pd.to_datetime(
+            [
+                "2024-01-01",
+                "2024-01-02",
+                "2024-01-03",
+                "2024-01-04",
+                "2024-01-05",
+                "2024-01-06",
+            ]
+        )
         values = pl.from_pandas(pd.Series(dates_pd, name="values"))
 
         gb = GroupBy(groups)
@@ -767,7 +785,9 @@ class TestPolarsEdgeCases:
     def test_mixed_null_patterns(self):
         """Test with various null patterns."""
         groups = pl.Series("group", ["A", "A", "A", "B", "B", "B"])
-        values = pl.Series("values", [1.0, None, 3.0, None, 5.0, None], dtype=pl.Float64)
+        values = pl.Series(
+            "values", [1.0, None, 3.0, None, 5.0, None], dtype=pl.Float64
+        )
 
         gb = GroupBy(groups)
 

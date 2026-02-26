@@ -1,6 +1,6 @@
 import multiprocessing
 from collections.abc import Mapping, Sequence
-from functools import cached_property, wraps
+from functools import cached_property, reduce, wraps
 from inspect import signature
 from typing import Callable, List, Literal, Optional, Tuple, Union
 
@@ -605,18 +605,37 @@ class GroupBy:
         Checks that all inputs have the same length and compatible indexes.
         Returns the names and list of value arrays along with a common index.
         """
-        value_list, value_names = convert_data_to_arr_list_and_keys(values)
         if isinstance(values, (pd.DataFrame, pl.DataFrame)):
-            value_list, value_names = map(
-                list,
-                zip(
-                    *[
-                        (val, name)
-                        for val, name in zip(value_list, value_names)
-                        if series_is_numeric(val)
-                    ]
-                ),
+            cols = [col for col in values.columns if series_is_numeric(values[col])]
+            values = values[cols]
+
+        value_list, value_names = convert_data_to_arr_list_and_keys(values)
+        value_index = _validate_input_lengths_and_indexes(value_list)
+        values_length = len(value_list[0])
+        if values_length != len(self):
+            raise ValueError(
+                f"Length of the input values ({values_length}) does not match length of group keys ({len(self)})"
             )
+
+        if self._key_index is not None:
+            if value_index is not None and not self._key_index.equals(value_index):
+                raise ValueError(
+                    "Pandas index of inputs does not match that of the group keys"
+                )
+            common_index = self._key_index
+        elif value_index is not None:
+            common_index = value_index
+        else:
+            common_index = None
+
+        if mask is not None and pd.api.types.is_bool_dtype(mask):
+            # check mask length and index are compatible with values and group keys
+            _validate_input_lengths_and_indexes([mask, *value_list])
+
+        if common_index is None:
+            transform_index = pd.RangeIndex(len(self))
+        else:
+            transform_index = common_index
 
         type_list = [None] * len(value_list)
         for i, val in enumerate(value_list):
@@ -625,24 +644,7 @@ class GroupBy:
             else:
                 type_list[i] = val.dtype if hasattr(val, "dtype") else val.type
 
-        to_check = value_list
-        if mask is not None and pd.api.types.is_bool_dtype(mask):
-            to_check = [*to_check, mask]
-
-        common_index = _validate_input_lengths_and_indexes(to_check)
-        input_len = len(to_check[0])
-
-        if input_len != len(self):
-            raise ValueError(
-                f"Length of the input values ({input_len}) does not match length of group keys ({len(self)})"
-            )
-        if self._key_index is not None and common_index is not None:
-            if not self._key_index.equals(common_index):
-                raise ValueError(
-                    "Pandas index of inputs does not match that of the group keys"
-                )
-
-        return value_names, value_list, type_list, common_index
+        return value_names, value_list, type_list, transform_index
 
     def _convert_arr_to_pandas_series(
         self, arr: np.ndarray, orig_type, index: pd.Index
@@ -656,8 +658,13 @@ class GroupBy:
             else:
                 arr = arr.view(int)
                 dtype = orig_type
+        elif isinstance(orig_type, pd.ArrowDtype):
+            result = to_arrow(arr).to_pandas(types_mapper=pd.ArrowDtype)
+            result.index = index
+            return result
         else:
-            dtype = None
+            dtype = arr.dtype
+
         return pd.Series(
             arr,
             index,
@@ -734,8 +741,8 @@ class GroupBy:
         return result
 
     def _build_arg_dict_for_function(self, func, values, mask, **kwargs):
-        value_names, value_list, type_list, common_index = self._preprocess_arguments(
-            values, mask
+        value_names, value_list, type_list, transform_index = (
+            self._preprocess_arguments(values, mask)
         )
 
         sig = signature(func)
@@ -754,7 +761,7 @@ class GroupBy:
         keys = self._col_names_from_value_names(value_names)
         arg_dict = {key: args.args for key, args in zip(keys, bound_args)}
 
-        return arg_dict, type_list, common_index
+        return arg_dict, type_list, transform_index
 
     def _find_first_chunk_in_slice(self, mask: slice) -> int:
         """
@@ -919,7 +926,7 @@ class GroupBy:
         transform: bool = False,
         margins: bool = False,
         observed_only: bool = True,
-    ) -> Union[pd.Series, pd.DataFrame]:
+    ) -> Union[pd.Series, pd.DataFrame, pl.Series, pl.DataFrame]:
         """
         Apply a group-by reduction to values.
         If values is a collection or DataFrame/2-D array, applies the function to each element in parallel.
@@ -953,8 +960,8 @@ class GroupBy:
         if func_is_mean:
             effective_func_name = "sum"  # mean is calculated as sum/count
 
-        value_names, value_list, type_list, common_index = self._preprocess_arguments(
-            values, mask
+        value_names, value_list, type_list, transform_index = (
+            self._preprocess_arguments(values, mask)
         )
 
         return_polars = self._values_is_polars(type_list) and transform
@@ -966,56 +973,48 @@ class GroupBy:
         )
 
         result_columns, counts = map(list, zip(*results))
-        result_len = len(self.result_index)
-
-        if transform:
-            self._unify_group_key_chunks()
-            result_columns = [result[self.group_ikey] for result in result_columns]
-            if common_index is not None:
-                result_index = common_index
-            else:
-                result_index = pd.RangeIndex(len(self))
-        else:
-            result_index = self.result_index
+        if func_name in ("size", "count"):
+            result_columns = counts
 
         result_col_names = self._col_names_from_value_names(value_names)
+        result_col_dict = dict(zip(result_col_names, result_columns))
 
-        if return_polars:
-            result_columns = [
-                self._convert_arr_to_polars_series(arr=result, orig_type=orig_type)
-                for result, orig_type in zip(result_columns, type_list)
-            ]
-            result_df = pl.DataFrame(
-                dict(zip(result_col_names, result_columns)),
+        if transform:
+            if func_name not in ("sum", "size", "sum_squares", "count"):
+                observed_group_mask = self.count_ikey(mask=mask) > 0
+            else:
+                observed_group_mask = None
+            result_df = self._transform_result_from_columns(
+                result_col_dict=result_col_dict,
+                counts=counts,
+                func_is_mean=func_is_mean,
+                type_list=type_list,
+                transform_index=transform_index,
+                observed_group_mask=observed_group_mask,
+                return_polars=return_polars,
             )
-        else:
-            result_columns = [
-                self._convert_arr_to_pandas_series(
-                    arr=result[: len(result_index)],
+            return self._maybe_squeeze_to_1d(result_df, values, len(value_list))
+
+        assert not return_polars
+
+        result_index = self.result_index
+        result_len = len(result_index)  # filter out null group if present
+
+        result_df = pd.DataFrame(
+            {
+                key: self._convert_arr_to_pandas_series(
+                    arr=result_col_dict[key][:result_len],
                     orig_type=orig_type,
                     index=result_index,
                 )
-                for result, orig_type in zip(result_columns, type_list)
-            ]
-            result_df = pd.DataFrame(
-                dict(zip(result_col_names, result_columns)),
-                copy=False,
-            )
-
-        result = self._maybe_squeeze_to_1d(result_df, values, len(value_list))
-
-        if transform:
-            return result
-
+                for key, orig_type in zip(result_col_names, type_list)
+            }
+        )
         count_df = pd.DataFrame(
             {key: count[:result_len] for key, count in zip(result_col_names, counts)},
-            index=result_index,
             copy=False,
+            index=result_index,
         )
-
-        if func_name in ("size", "count"):
-            result_df = count_df
-
         sortkey = self._labels_argsort
 
         if observed_only:
@@ -1049,17 +1048,65 @@ class GroupBy:
                 count_df = self._add_margins(count_df, margins=margins, func_name="sum")
 
         if func_is_mean:
-            with np.errstate(invalid="ignore", divide="ignore"):
-                result_df = pd.DataFrame(
-                    {
-                        k: mean_from_sum_count(
-                            result_df[k], count_df[k].reindex(result_df.index)
-                        )
-                        for k in result_df
-                    }
-                )
+            result_df = pd.DataFrame(
+                {k: mean_from_sum_count(result_df[k], count_df[k]) for k in result_df},
+                copy=False,
+            )
 
         return self._maybe_squeeze_to_1d(result_df, values, len(value_list))
+
+    def _transform_result_from_columns(
+        self,
+        result_col_dict: dict[str, np.ndarray],
+        counts: List[np.ndarray],
+        type_list: List,
+        func_is_mean: bool,
+        transform_index: pd.Index,
+        observed_group_mask: Optional[ArrayType1D] = None,
+        return_polars: bool = False,
+    ) -> pd.DataFrame | pl.DataFrame:
+        if func_is_mean:
+            result_col_dict = {
+                k: mean_from_sum_count(
+                    result_col_dict[k][: self.ngroups], count[: self.ngroups]
+                )
+                for k, count in zip(result_col_dict, counts)
+            }
+
+        self._unify_group_key_chunks()
+        result_col_dict = {
+            k: result_col_dict[k][self.group_ikey] for k in result_col_dict
+        }
+
+        if return_polars:
+            result_df = pl.DataFrame(
+                {
+                    key: self._convert_arr_to_polars_series(
+                        arr=result_col_dict[key], orig_type=orig_type
+                    )
+                    for key, orig_type in zip(result_col_dict, type_list)
+                }
+            )
+        else:
+            result_series_dict = {
+                key: self._convert_arr_to_pandas_series(
+                    arr=result_col_dict[key],
+                    orig_type=orig_type,
+                    index=transform_index,
+                )
+                for key, orig_type in zip(result_col_dict, type_list)
+            }
+
+            if observed_group_mask is not None and not observed_group_mask.all():
+                observed_group_mask = observed_group_mask[self.group_ikey]
+                for key, series in result_series_dict.items():
+                    if type_list[0].kind in "biu" or True:
+                        series = series.where(observed_group_mask)
+                        result_series_dict[key] = series
+
+            result_df = pd.DataFrame(result_series_dict, copy=False)
+
+        return result_df
 
     _GB_REDUCTION_DOCSTRING = """
         Calculate the {method} of the given values over the groups defined by `key`
@@ -1180,9 +1227,50 @@ class GroupBy:
             mask=mask, margins=margins, transform=transform, observed_only=observed_only
         )
         sq_sum = self._apply_gb_reduction("sum_squares", values=values, **kwargs)
-        sum_sq = self.sum(values=values, **kwargs).to_numpy().astype(np.float64) ** 2
+        sum_ = self.sum(values=values, **kwargs)
         count = self.count(values=values, **kwargs)
-        return (sq_sum - sum_sq / count) / (count - ddof)
+
+        def _compute_variance_from_sums_polars(
+            sum_: pl.Series, sq_sum: pl.Series, count: pl.Series
+        ):
+            n = count - ddof
+            sum_ = sum_.cast(pl.Float64)
+            sq_sum = sq_sum.cast(pl.Float64)
+            var = (sq_sum - sum_.pow(2) / count) / n
+            var[count <= 0] = None
+            return var
+
+        def _compute_variance_from_sums_pandas(
+            sum_: pd.Series, sq_sum: pd.Series, count: pd.Series
+        ):
+            n = count - ddof
+            if isinstance(sum_.dtype, pd.ArrowDtype):
+                sum_sq = sum_.astype("double[pyarrow]", copy=False) ** 2
+            else:
+                sum_sq = sum_.astype("float64", copy=False) ** 2
+            var = (sq_sum - sum_sq / count) / n
+            var = var.where(n > 0)
+            return var
+
+        if isinstance(sum_, pd.Series):
+            return _compute_variance_from_sums_pandas(sum_, sq_sum, count)
+        elif isinstance(sum_, pl.Series):
+            return _compute_variance_from_sums_polars(sum_, sq_sum, count)
+        elif isinstance(sum_, pd.DataFrame):
+            return pd.DataFrame(
+                {
+                    k: _compute_variance_from_sums_pandas(sum_[k], sq_sum[k], count[k])
+                    for k in sq_sum.columns
+                },
+                copy=False,
+            )
+        elif isinstance(sum_, pl.DataFrame):
+            return pl.DataFrame(
+                {
+                    k: _compute_variance_from_sums_polars(sum_[k], sq_sum[k], count[k])
+                    for k in sq_sum.columns
+                }
+            )
 
     @groupby_method(_GB_REDUCTION_DOCSTRING, full_name="standard deviation")
     def std(
@@ -1360,8 +1448,8 @@ class GroupBy:
         if not isinstance(self, GroupBy):
             self = GroupBy(self)
 
-        value_names, value_list, type_list, common_index = self._preprocess_arguments(
-            values, mask=mask
+        value_names, value_list, type_list, transform_index = (
+            self._preprocess_arguments(values, mask=mask)
         )
         indexer = self._group_sort_indexer
         group_counts = self.ikey_count[self._labels_argsort]
@@ -1411,11 +1499,7 @@ class GroupBy:
             if transform:
                 self._unify_group_key_chunks(keep_chunked=False)
                 arrays = [arr[self.group_ikey] for arr in arrays]
-                index = (
-                    common_index
-                    if common_index is not None
-                    else pd.RangeIndex(len(self))
-                )
+                index = transform_index
             else:
                 index = group_index
             could_be_non_reduce = False
@@ -1456,7 +1540,7 @@ class GroupBy:
                     group_index, pd.RangeIndex(n_per_group)
                 )
             else:
-                index = self._build_group_sorted_index(common_index)
+                index = self._build_group_sorted_index(transform_index)
                 if mask is not None:
                     index = index[mask[indexer]]
 
@@ -1630,20 +1714,20 @@ class GroupBy:
         """
         from ..emas import ema_grouped
 
-        value_names, value_list, type_list, common_index = self._preprocess_arguments(
-            values, mask
+        value_names, value_list, type_list, transform_index = (
+            self._preprocess_arguments(values, mask)
         )
 
         return_polars = self._values_is_polars(type_list)
 
         if index_by_groups:
             indexer = self._group_sort_indexer
-            result_index = self._build_group_sorted_index(common_index)
+            result_index = self._build_group_sorted_index(transform_index)
             group_counts = self.ikey_count[self._labels_argsort]
             group_key = np.repeat(np.arange(self.ngroups), group_counts)
         else:
             indexer = slice(None)
-            result_index = common_index
+            result_index = transform_index
             group_key = self.group_ikey
 
         arg_list = [
@@ -2015,7 +2099,7 @@ class GroupBy:
             print("Unifying chunked group-key before cumulative group-by")
             self._unify_group_key_chunks()
 
-        arg_dict, type_list, common_index = self._build_arg_dict_for_function(
+        arg_dict, type_list, transform_index = self._build_arg_dict_for_function(
             func,
             values=values,
             mask=mask,
@@ -2033,7 +2117,7 @@ class GroupBy:
         else:
             for key, result, dtype in zip(arg_dict, results, type_list):
                 result_dict[key] = self._convert_arr_to_pandas_series(
-                    result, dtype, common_index
+                    result, dtype, transform_index
                 )
             result = pd.DataFrame(result_dict)
 
@@ -2398,6 +2482,17 @@ def crosstab(
     return table
 
 
+def cartesian_product(*arrays):
+
+    def add_level(levels, new_level):
+        return [
+            *(np.repeat(a, len(new_level)) for a in levels),
+            np.tile(new_level, len(levels[0])),
+        ]
+
+    return reduce(add_level, arrays[1:], [arrays[0]])
+
+
 def add_row_margin(
     data: pd.Series | pd.DataFrame, agg_func="sum", levels: Optional[List[int]] = None
 ):
@@ -2416,7 +2511,6 @@ def add_row_margin(
     pd.DataFrame
         DataFrame with an additional 'All' row containing the aggregated values.
     """
-    from pandas.core.reshape.util import cartesian_product
 
     data = data.sort_index()
     index = data.index
@@ -2429,7 +2523,8 @@ def add_row_margin(
         levels = all_levels
 
     new_levels = [index.levels[lvl].tolist() + ["All"] for lvl in all_levels]
-    new_codes = cartesian_product([np.arange(len(lvl)) for lvl in new_levels])
+    new_codes = cartesian_product(*[np.arange(len(lvl)) for lvl in new_levels])
+
     new_index = pd.MultiIndex(codes=new_codes, levels=new_levels, names=index.names)
     out = data.reindex(new_index, fill_value=0)
     keep = pd.Series(False, index=out.index)

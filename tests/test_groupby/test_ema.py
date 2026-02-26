@@ -205,14 +205,16 @@ class TestGroupByEma:
 
         # Create irregular time intervals
         base_time = pd.Timestamp("2024-01-01", tz="UTC")
-        times = pd.Series([
-            base_time,
-            base_time + pd.Timedelta(minutes=15),
-            base_time + pd.Timedelta(hours=2),
-            base_time + pd.Timedelta(minutes=5),
-            base_time + pd.Timedelta(hours=1),
-            base_time + pd.Timedelta(hours=3),
-        ])
+        times = pd.Series(
+            [
+                base_time,
+                base_time + pd.Timedelta(minutes=15),
+                base_time + pd.Timedelta(hours=2),
+                base_time + pd.Timedelta(minutes=5),
+                base_time + pd.Timedelta(hours=1),
+                base_time + pd.Timedelta(hours=3),
+            ]
+        )
         gb = GroupBy(key)
 
         result = gb.ema(values, halflife="1h", times=times)
@@ -310,16 +312,16 @@ class TestGroupByEma:
 
         # Missing both alpha and halflife
         with pytest.raises(
-            ValueError, match="one of alpha or halflife must be provided"
+            ValueError, match="One of alpha or halflife must be provided"
         ):
             gb.ema(values)
 
         # Both alpha and halflife provided
-        with pytest.raises(ValueError, match="only one of alpha or halflife"):
+        with pytest.raises(ValueError, match="Only one of alpha or halflife"):
             gb.ema(values, alpha=0.5, halflife=2)
 
         # Alpha out of range
-        with pytest.raises(ValueError, match="alpha must be between 0 and 1"):
+        with pytest.raises(ValueError, match="Alpha must be between 0 and 1"):
             gb.ema(values, alpha=1.5)
 
         # Negative halflife
@@ -335,7 +337,7 @@ class TestGroupByEma:
 
         # Times without halflife
         with pytest.raises(
-            ValueError, match="halflife must be provided when times are given"
+            ValueError, match="Halflife must be provided when times are given"
         ):
             gb.ema(values, alpha=0.5, times=times)
 
@@ -343,7 +345,7 @@ class TestGroupByEma:
         short_times = pd.date_range("2024-01-01", periods=3, freq="1h")
         with pytest.raises(
             ValueError,
-            match="group_key, values, times must have equal length. " \
+            match="group_key, values, times must have equal length. "
             "Got lengths: {'group_key': 4, 'values': 4, 'times': 3",
         ):
             gb.ema(values, halflife="1h", times=short_times)

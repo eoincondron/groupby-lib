@@ -1745,7 +1745,7 @@ class TestConvertTimestampToTzUnaware:
         arr, dtype = _convert_timestamp_to_tz_unaware(series)
 
         # Should return the underlying .values array
-        assert arr is series.values
+        assert arr.base is series.values.base
         assert dtype == series.dtype
 
     def test_pandas_index_with_numpy_backing(self):

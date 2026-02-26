@@ -6,7 +6,6 @@ import pandas as pd
 
 from .util import check_data_inputs_aligned, _convert_timestamp_to_tz_unaware
 
-
 _COMMON_VALUE_TYPES = [
     nb.types.Array(dtype, 1, "A", readonly=readonly)
     for dtype in [nb.types.float32, nb.types.int32, nb.types.float64, nb.types.int64]
@@ -17,6 +16,47 @@ _COMMON_VALUE_TYPES = [
 _EMA_SIGNATURES = [
     nb.types.float64[:](arr_type, nb.types.float64) for arr_type in _COMMON_VALUE_TYPES
 ]
+
+
+def _halflife_to_int(halflife, dtype: np.dtype):
+    if dtype.kind.lower() == "m":
+        norm = np.array(1, dtype=dtype).astype("M8[ns]").astype(int)
+    else:
+        norm = 1
+    halflife = pd.Timedelta(halflife).value // norm
+    if halflife <= 0:
+        raise ValueError("Halflife must be positive.")
+    return halflife
+
+
+def _times_to_int_array(times):
+    times, _ = _convert_timestamp_to_tz_unaware(times)
+    return times.view(np.int64)
+
+
+def _resolve_ema_arguments(alpha, halflife, times):
+    if times is not None:
+        if halflife is None:
+            raise ValueError("Halflife must be provided when times are given.")
+        times, _ = _convert_timestamp_to_tz_unaware(times)
+        halflife = _halflife_to_int(halflife, times.dtype)
+        times = times.view(np.int64)
+        return alpha, halflife, times
+
+    if halflife is not None:
+        if alpha is not None:
+            raise ValueError("Only one of alpha or halflife should be provided.")
+        if halflife <= 0:
+            raise ValueError("Halflife must be positive.")
+        alpha = 1 - np.exp(-np.log(2) / halflife)
+        return alpha, halflife, times
+
+    if alpha is None:
+        raise ValueError("One of alpha or halflife must be provided.")
+    else:
+        if not (0 < alpha <= 1):
+            raise ValueError("Alpha must be between 0 and 1.")
+        return alpha, halflife, times
 
 
 @nb.njit(nogil=True, cache=True)
@@ -51,18 +91,18 @@ def _ema_adjusted(arr: np.ndarray, alpha: float) -> np.ndarray:
     """
     out = np.zeros_like(arr, dtype="float64")
     beta = 1 - alpha
-    residual = 0
-    residual_weights = 0
+    weighted_sum = 0
+    sum_of_weights = 0
     for i, x in enumerate(arr):
         if np.isnan(x):
             out[i] = out[i - 1]
         else:
-            out[i] = (x + residual) / (1 + residual_weights)
-            residual_weights += 1
-            residual += x
+            sum_of_weights += 1
+            weighted_sum += x
+            out[i] = weighted_sum / sum_of_weights
 
-        residual *= beta
-        residual_weights *= beta
+        weighted_sum *= beta
+        sum_of_weights *= beta
 
     return out
 
@@ -143,41 +183,31 @@ def _ema_time_weighted(arr: np.ndarray, times: np.ndarray, halflife: int) -> np.
     NaN values propagate the last valid EMA value forward.
     """
     out = np.zeros_like(arr, dtype="float64")
-    residual = out[0] = arr[0]
-    residual_weights = 1
+    weighted_sum = out[0] = arr[0]
+    sum_of_weights = 1
+    decay_factor = np.exp2(-1 / halflife)  # Precompute for efficiency
+
     for i, x in enumerate(arr[1:], 1):
-        hl = (times[i] - times[i - 1]) / halflife
-        beta = np.exp(-np.log(2) * hl)
-        residual *= beta
-        residual_weights *= beta
+        time_delta = times[i] - times[i - 1]
+        beta = decay_factor**time_delta
+        weighted_sum *= beta
+        sum_of_weights *= beta
 
         if np.isnan(x):
             out[i] = out[i - 1]
         else:
-            out[i] = (x + residual) / (1 + residual_weights)
-            residual_weights += 1
-            residual += x
+            sum_of_weights += 1
+            weighted_sum += x
+            out[i] = weighted_sum / sum_of_weights
 
     return out
-
-
-def _halflife_to_int(halflife):
-    halflife = pd.Timedelta(halflife).value
-    if halflife <= 0:
-        raise ValueError("Halflife must be positive.")
-    return halflife
-
-
-def _times_to_int_array(times):
-    times, _ = _convert_timestamp_to_tz_unaware(times)
-    return times.view(np.int64)
 
 
 @check_data_inputs_aligned("values, times")
 def ema(
     values: np.ndarray | pd.Series,
     alpha: Optional[float] = None,
-    halflife: Optional[str | pd.Timedelta] = None,
+    halflife: Optional[int | float | str | pd.Timedelta] = None,
     times: Optional[np.ndarray | pd.DatetimeIndex] = None,
     adjust: bool = True,
 ) -> np.ndarray | pd.Series:
@@ -190,7 +220,7 @@ def ema(
     alpha : float, default 0.5
         Smoothing factor, between 0 and 1. Higher values give more weight to recent data.
     halflife: str | pd.Timedelta, e.g. "1s"
-        Define the decay rate as halflife using a pd.Timedelta or a string compatible with same.
+        Define the decay rate as halflife. If times are provided, pd.Timedelta or a string compatible with same may be used.
     times : array-like, optional
         Array of timestamps corresponding to the input data. If provided, the EWMA will be time
         weighted based on the halflife parameter.
@@ -230,34 +260,14 @@ def ema(
             return pd.Series(result, index=values.index, name=values.name)
         return result
 
-    if times is not None:
-        if halflife is None:
-            raise ValueError("Halflife must be provided when times are given.")
-        halflife = _halflife_to_int(halflife)
+    alpha, halflife, times = _resolve_ema_arguments(alpha, halflife, times)
 
-        times = _times_to_int_array(times)
+    if times is not None:
         ema = _ema_time_weighted(arr, times, halflife)
         return _maybe_to_series(ema)
 
-    if halflife is not None:
-        if alpha is not None:
-            raise ValueError("Only one of alpha or halflife should be provided.")
-
-        if halflife <= 0:
-            raise ValueError("Halflife must be positive.")
-
-        alpha = 1 - np.exp(-np.log(2) / halflife)
-
-    elif alpha is None:
-        raise ValueError("One of alpha or halflife must be provided.")
-    else:
-        if not (0 < alpha <= 1):
-            raise ValueError("Alpha must be between 0 and 1.")
-
     if values.ndim != 1:
         raise ValueError("Input array must be one-dimensional.")
-    if not (0 < alpha <= 1):
-        raise ValueError("Alpha must be between 0 and 1.")
 
     if adjust:
         ema = _ema_adjusted(arr, alpha)
@@ -333,8 +343,8 @@ def _ema_grouped(
     """
     out = np.zeros_like(values, dtype="float64")
     beta = 1 - alpha
-    residuals = np.zeros(ngroups, dtype="float64")
-    residual_weights = np.zeros(ngroups, dtype="float64")
+    weighted_sums = np.zeros(ngroups, dtype="float64")
+    sums_of_weights = np.zeros(ngroups, dtype="float64")
     last_seen = np.full(ngroups, np.nan, dtype="float64")
 
     masked = mask is not None
@@ -343,19 +353,19 @@ def _ema_grouped(
         if np.isnan(x) or (masked and not mask[i]):
             out[i] = last_seen[k]
         else:
-            out[i] = (x + residuals[k]) / (1 + residual_weights[k])
-            residual_weights[k] += 1
-            residuals[k] += x
+            sums_of_weights[k] += 1
+            weighted_sums[k] += x
+            out[i] = weighted_sums[k] / sums_of_weights[k]
 
-        residuals[k] *= beta
-        residual_weights[k] *= beta
+        weighted_sums[k] *= beta
+        sums_of_weights[k] *= beta
 
         last_seen[k] = out[i]
 
     return out
 
 
-_EMA_SIGNATURES_GROUPED_TIMED = [
+_EMA_SIGNATURES_GROUPED_TIME_WEIGHTED = [
     nb.types.float64[:](
         key_type,
         arr_type,
@@ -370,7 +380,7 @@ _EMA_SIGNATURES_GROUPED_TIMED = [
 
 
 @nb.njit(nogil=True, cache=True)
-def _ema_grouped_timed(
+def _ema_grouped_time_weighted(
     group_key: np.ndarray,
     values: np.ndarray,
     times: np.ndarray,
@@ -426,26 +436,29 @@ def _ema_grouped_timed(
     NaN values propagate the last valid EMA value for that group.
     """
     out = np.zeros_like(values, dtype="float64")
-    residuals = np.zeros(ngroups, dtype="float64")
-    residual_weights = np.zeros(ngroups, dtype="float64")
+    weighted_sums = np.zeros(ngroups, dtype="float64")
+    sums_of_weights = np.zeros(ngroups, dtype="float64")
     last_seen_times = np.zeros(ngroups, dtype="int64")
     last_seen = np.full(ngroups, np.nan, dtype="float64")
 
     masked = mask is not None
+    decay_factor = np.exp2(
+        -1 / halflife
+    )  # Precompute constant for halflife to avoid repeated log(2) calculation
 
     for i, (k, x) in enumerate(zip(group_key, values)):
         if last_seen_times[k] > 0:
-            hl = (times[i] - last_seen_times[k]) / halflife
-            beta = np.exp(-np.log(2) * hl)
-            residuals[k] *= beta
-            residual_weights[k] *= beta
+            time_delta = times[i] - last_seen_times[k]
+            beta = decay_factor**time_delta
+            weighted_sums[k] *= beta
+            sums_of_weights[k] *= beta
 
         if np.isnan(x) or (masked and not mask[i]):
             out[i] = last_seen[k]
         else:
-            out[i] = (x + residuals[k]) / (1 + residual_weights[k])
-            residual_weights[k] += 1
-            residuals[k] += x
+            sums_of_weights[k] += 1
+            weighted_sums[k] += x
+            out[i] = weighted_sums[k] / sums_of_weights[k]
 
         last_seen_times[k] = times[i]
         last_seen[k] = out[i]
@@ -527,7 +540,7 @@ def ema_grouped(
     group_key_arr = np.asarray(group_key)
     values_arr = np.asarray(values)
 
-    if values_arr.dtype.kind not in ("f", "i"):
+    if values_arr.dtype.kind not in "fiu":
         raise TypeError("values must be numeric")
 
     # Validate dimensions first
@@ -552,13 +565,6 @@ def ema_grouped(
         except (ValueError, TypeError):
             raise ValueError("group_key must be integer or convertible to integer")
 
-    if halflife is not None:
-        if alpha is not None:
-            raise ValueError("only one of alpha or halflife should be provided")
-
-        halflife = _halflife_to_int(halflife)
-        alpha = 1 - np.exp(-np.log(2) / halflife)
-
     nb_kwargs = dict(
         group_key=group_key_arr,
         values=values_arr,
@@ -568,22 +574,17 @@ def ema_grouped(
         mask = np.asarray(mask)
     nb_kwargs["mask"] = mask
 
+    alpha, halflife, times = _resolve_ema_arguments(alpha, halflife, times)
+
     # Handle time-weighted case
     if times is not None:
-        if halflife is None:
-            raise ValueError("halflife must be provided when times are given")
-
-        nb_kwargs["halflife"] = halflife
-        nb_kwargs["times"] = _times_to_int_array(times)
-        result = _ema_grouped_timed(**nb_kwargs)
+        result = _ema_grouped_time_weighted(
+            halflife=halflife,
+            times=times,
+            **nb_kwargs,
+        )
         return _maybe_to_series(result)
-
-    if alpha is None:
-        raise ValueError("one of alpha or halflife must be provided")
     else:
-        if not (0 < alpha <= 1):
-            raise ValueError("alpha must be between 0 and 1")
-
         # Compute grouped EMA
         result = _ema_grouped(**nb_kwargs, alpha=alpha)
         return _maybe_to_series(result)

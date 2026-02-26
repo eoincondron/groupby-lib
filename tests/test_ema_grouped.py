@@ -144,13 +144,13 @@ class TestEmaGrouped:
         values = np.array([1.0, 2.0, 3.0, 4.0])
 
         # Alpha out of range
-        with pytest.raises(ValueError, match="alpha must be between 0 and 1"):
+        with pytest.raises(ValueError, match="Alpha must be between 0 and 1"):
             ema_grouped(groups, 2, values, alpha=1.5)
 
-        with pytest.raises(ValueError, match="alpha must be between 0 and 1"):
+        with pytest.raises(ValueError, match="Alpha must be between 0 and 1"):
             ema_grouped(groups, 2, values, alpha=0.0)
 
-        with pytest.raises(ValueError, match="alpha must be between 0 and 1"):
+        with pytest.raises(ValueError, match="Alpha must be between 0 and 1"):
             ema_grouped(groups, 2, values, alpha=-0.5)
 
     def test_halflife_validation(self):
@@ -172,12 +172,12 @@ class TestEmaGrouped:
         values = np.array([1.0, 2.0, 3.0, 4.0])
 
         # Both provided
-        with pytest.raises(ValueError, match="only one of alpha or halflife"):
+        with pytest.raises(ValueError, match="Only one of alpha or halflife"):
             ema_grouped(groups, 2, values, alpha=0.5, halflife=2)
 
         # Neither provided
         with pytest.raises(
-            ValueError, match="one of alpha or halflife must be provided"
+            ValueError, match="One of alpha or halflife must be provided"
         ):
             ema_grouped(groups, 2, values)
 
@@ -201,7 +201,7 @@ class TestEmaGrouped:
 
         with pytest.raises(
             ValueError,
-            match="group_key, values, times must have equal length. " \
+            match="group_key, values, times must have equal length. "
             "Got lengths: {'group_key': 4, 'values': 4, 'times': 3}",
         ):
             ema_grouped(groups, 2, values, halflife="1h", times=times)
@@ -213,7 +213,7 @@ class TestEmaGrouped:
         times = pd.date_range("2024-01-01", periods=4, freq="1h")
 
         with pytest.raises(
-            ValueError, match="halflife must be provided when times are given"
+            ValueError, match="Halflife must be provided when times are given"
         ):
             ema_grouped(groups, 2, values, alpha=0.5, times=times)
 
