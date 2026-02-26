@@ -312,16 +312,16 @@ class TestGroupByEma:
 
         # Missing both alpha and halflife
         with pytest.raises(
-            ValueError, match="one of alpha or halflife must be provided"
+            ValueError, match="One of alpha or halflife must be provided"
         ):
             gb.ema(values)
 
         # Both alpha and halflife provided
-        with pytest.raises(ValueError, match="only one of alpha or halflife"):
+        with pytest.raises(ValueError, match="Only one of alpha or halflife"):
             gb.ema(values, alpha=0.5, halflife=2)
 
         # Alpha out of range
-        with pytest.raises(ValueError, match="alpha must be between 0 and 1"):
+        with pytest.raises(ValueError, match="Alpha must be between 0 and 1"):
             gb.ema(values, alpha=1.5)
 
         # Negative halflife
@@ -337,7 +337,7 @@ class TestGroupByEma:
 
         # Times without halflife
         with pytest.raises(
-            ValueError, match="halflife must be provided when times are given"
+            ValueError, match="Halflife must be provided when times are given"
         ):
             gb.ema(values, alpha=0.5, times=times)
 
