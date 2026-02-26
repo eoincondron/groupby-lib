@@ -55,12 +55,9 @@ def groupby_aggregation(
             include margin rows for the specified levels only."""
 
         if include_numeric_only:
-            param_docs = (
-                """        numeric_only : bool, default True
+            param_docs = """        numeric_only : bool, default True
             Include only numeric columns
-"""
-                + param_docs
-            )
+""" + param_docs
 
         if extra_params:
             param_docs = extra_params + "\n" + param_docs

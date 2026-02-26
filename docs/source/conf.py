@@ -18,6 +18,7 @@ author = "Eoin Condron"
 # Get version from package
 try:
     from importlib.metadata import version as get_version
+
     release = get_version("groupby-lib")
 except Exception:
     # Fallback if package is not installed

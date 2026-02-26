@@ -535,7 +535,12 @@ class TestPerformanceWithMixedTypes:
             expected = pandas_gb.sum(numeric_only=True)
 
             # expected does not include the aggregation of the grouping column
-            assert_pd_equal(result[expected.columns], expected, dtype_kind_only=True, check_column_type=False)
+            assert_pd_equal(
+                result[expected.columns],
+                expected,
+                dtype_kind_only=True,
+                check_column_type=False,
+            )
 
 
 if __name__ == "__main__":

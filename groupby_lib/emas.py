@@ -6,7 +6,6 @@ import pandas as pd
 
 from .util import check_data_inputs_aligned, _convert_timestamp_to_tz_unaware
 
-
 _COMMON_VALUE_TYPES = [
     nb.types.Array(dtype, 1, "A", readonly=readonly)
     for dtype in [nb.types.float32, nb.types.int32, nb.types.float64, nb.types.int64]

@@ -30,7 +30,7 @@ class TestGroupBy:
             return
         if "pyarrow" in str(value_dtype) and value_type is not pd.Series:
             return
-        
+
         index = pd.RangeIndex(2, 11)
         key = pd.Series(
             [1, 1, 2, 1, 3, 3, 6, 1, 6],
@@ -82,7 +82,6 @@ class TestGroupBy:
             return
         if "pyarrow" in str(value_dtype) and value_type is not pd.Series:
             return
-        
 
         index = pd.RangeIndex(2, 11)
         key = pd.Series(
